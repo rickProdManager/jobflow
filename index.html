@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Job Application Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <section id="authView" class="auth-screen"></section>
+
+    <div id="appShell" class="app" hidden>
+      <aside class="sidebar">
+        <div>
+          <p class="eyebrow">Job Application Tracker</p>
+          <h1>Job Flow</h1>
+        </div>
+
+        <nav class="nav" aria-label="Main views">
+          <button class="nav-button active" data-view="dashboard">Dashboard</button>
+          <button class="nav-button" data-view="applications">Applications</button>
+          <button class="nav-button" data-view="reminders">Next Actions</button>
+          <button class="nav-button" data-view="analytics">Analytics</button>
+          <button class="nav-button" data-view="settings">Data</button>
+        </nav>
+
+        <button id="newApplicationButton" class="primary-button">+ Application</button>
+        <button id="lockButton" class="lock-button" type="button">Lock</button>
+        <div class="sidebar-credit" aria-label="Vibe coded by Ricardo Gonzalez">
+          <span>Vibe coded by</span>
+          <strong>Ricardo Gonzalez</strong>
+        </div>
+      </aside>
+
+      <main class="content">
+        <section id="dashboardView" class="view active-view"></section>
+        <section id="applicationsView" class="view"></section>
+        <section id="remindersView" class="view"></section>
+        <section id="analyticsView" class="view"></section>
+        <section id="settingsView" class="view"></section>
+      </main>
+    </div>
+
+    <dialog id="applicationDialog" class="dialog">
+      <form id="applicationForm" method="dialog" data-application-path="direct">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Opportunity</p>
+            <h2 id="dialogTitle">New application</h2>
+          </div>
+          <button type="button" class="icon-button" data-close-dialog aria-label="Close">x</button>
+        </div>
+
+        <input type="hidden" id="applicationId" />
+
+        <div class="form-grid">
+          <label>
+            Company
+            <input id="companyName" required autocomplete="organization" />
+          </label>
+          <label>
+            Job title
+            <input id="jobTitle" required autocomplete="off" />
+          </label>
+          <label>
+            Location
+            <input id="location" autocomplete="off" />
+          </label>
+          <label>
+            Job URL
+            <input id="jobUrl" type="url" autocomplete="url" />
+          </label>
+          <div class="salary-range-fields">
+            <label>
+              Salary minimum
+              <input id="salaryMin" type="number" min="0" step="1000" placeholder="120000" inputmode="numeric" />
+            </label>
+            <label>
+              Salary maximum
+              <input id="salaryMax" type="number" min="0" step="1000" placeholder="150000" inputmode="numeric" />
+            </label>
+          </div>
+          <label>
+            Application path
+            <select id="applicationPath">
+              <option value="direct">Direct application</option>
+              <option value="referral">Referral</option>
+              <option value="headhunter">Headhunter reached out</option>
+            </select>
+          </label>
+          <label>
+            Work mode
+            <select id="workMode">
+              <option>Remote</option>
+              <option>Hybrid</option>
+              <option>On-site</option>
+              <option>Flexible</option>
+            </select>
+          </label>
+          <label>
+            Stage
+            <select id="stage">
+              <option>Applied</option>
+              <option>Recruiter Screen</option>
+              <option>Technical Screen</option>
+              <option>Final Interview</option>
+              <option>Offer</option>
+              <option>Rejected</option>
+              <option>Withdrawn</option>
+              <option>Abandoned</option>
+            </select>
+          </label>
+          <label class="conditional-field" data-path-field="referral" hidden>
+            Referred by
+            <input id="referrerName" autocomplete="name" />
+          </label>
+          <label class="conditional-field" data-path-field="referral" hidden>
+            Referrer contact
+            <input id="referrerContact" placeholder="Email or LinkedIn" autocomplete="off" />
+          </label>
+          <label class="conditional-field" data-path-field="headhunter" hidden>
+            Headhunter / recruiter
+            <input id="headhunterName" autocomplete="name" />
+          </label>
+          <label class="conditional-field" data-path-field="headhunter" hidden>
+            Headhunter contact
+            <input id="headhunterContact" placeholder="Email, phone, or LinkedIn" autocomplete="off" />
+          </label>
+        </div>
+
+        <label>
+          Notes
+          <textarea id="notes" rows="4"></textarea>
+        </label>
+
+        <div class="form-section">
+          <div>
+            <p class="eyebrow">Documents used</p>
+            <h3>Resume and cover letter</h3>
+          </div>
+
+          <div class="form-grid">
+            <label>
+              Resume version
+              <input id="resumeName" placeholder="Product Engineer Resume v2" autocomplete="off" />
+            </label>
+            <input id="resumePath" type="hidden" />
+            <label>
+              Select resume file
+              <input id="resumeFile" type="file" accept=".pdf,.doc,.docx,.txt,.rtf" />
+            </label>
+            <label>
+              Cover letter version
+              <input id="coverLetterName" placeholder="Company-specific cover letter" autocomplete="off" />
+            </label>
+            <input id="coverLetterPath" type="hidden" />
+            <label>
+              Select cover letter file
+              <input id="coverLetterFile" type="file" accept=".pdf,.doc,.docx,.txt,.rtf" />
+            </label>
+            <label>
+              Portfolio / work sample link
+              <input id="portfolioPath" placeholder="https://portfolio.example.com/case-study" autocomplete="off" />
+            </label>
+            <label class="checkbox-label">
+              <input id="tailoredDocuments" type="checkbox" />
+              Tailored for this application
+            </label>
+          </div>
+
+          <label>
+            Tailoring notes
+            <textarea id="documentNotes" rows="3" placeholder="Keywords emphasized, role focus, edits made, or why this version was chosen."></textarea>
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-dialog>Cancel</button>
+          <button class="primary-button" type="submit">Save application</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="activityDialog" class="dialog">
+      <form id="activityForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Timeline</p>
+            <h2 id="activityDialogTitle">Add activity</h2>
+          </div>
+          <button type="button" class="icon-button" data-close-activity-dialog aria-label="Close">x</button>
+        </div>
+
+        <input type="hidden" id="activityId" />
+        <input type="hidden" id="activityApplicationId" />
+        <div class="form-grid">
+          <label>
+            Type
+            <select id="activityType">
+              <option value="application_submitted">Application submitted</option>
+              <option value="follow_up_sent">Follow-up sent</option>
+              <option value="recruiter_replied">Recruiter replied</option>
+              <option value="interview_scheduled">Interview scheduled</option>
+              <option value="interview_completed">Interview completed</option>
+              <option value="thank_you_sent">Thank-you sent</option>
+              <option value="offer_received">Offer received</option>
+              <option value="rejected">Rejected</option>
+              <option value="abandoned_no_response">Abandoned - no response</option>
+              <option value="note_added">Note added</option>
+            </select>
+          </label>
+          <label>
+            Date done
+            <input id="occurredAt" type="date" required />
+          </label>
+        </div>
+
+        <label>
+          Details
+          <textarea id="activityDescription" rows="3"></textarea>
+        </label>
+
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-activity-dialog>Cancel</button>
+          <button class="primary-button" id="activitySubmitButton" type="submit">Add activity</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="taskDialog" class="dialog">
+      <form id="taskForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Next action</p>
+            <h2>Add next action</h2>
+          </div>
+          <button type="button" class="icon-button" data-close-task-dialog aria-label="Close">x</button>
+        </div>
+
+        <input type="hidden" id="taskApplicationId" />
+        <div class="form-grid">
+          <label>
+            Next action
+            <input id="taskTitle" required placeholder="Follow up with recruiter" autocomplete="off" />
+          </label>
+          <label>
+            Due date
+            <input id="taskDueAt" type="date" required />
+          </label>
+          <label>
+            Priority
+            <select id="taskPriority">
+              <option>Normal</option>
+              <option>High</option>
+              <option>Low</option>
+            </select>
+          </label>
+          <label>
+            Type
+            <select id="taskType">
+              <option>Follow-up</option>
+              <option>Prepare</option>
+              <option>Research</option>
+              <option>Send document</option>
+              <option>Interview prep</option>
+              <option>Other</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Notes
+          <textarea id="taskNotes" rows="3"></textarea>
+        </label>
+
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-task-dialog>Cancel</button>
+          <button class="primary-button" type="submit">Add next action</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="taskCompletionDialog" class="dialog">
+      <form id="taskCompletionForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <p class="eyebrow">Next action</p>
+            <h2>Complete next action</h2>
+          </div>
+          <button type="button" class="icon-button" data-close-task-completion-dialog aria-label="Close">x</button>
+        </div>
+
+        <input type="hidden" id="taskCompletionTaskId" />
+        <p class="dialog-context" id="taskCompletionContext"></p>
+        <div class="form-grid">
+          <label>
+            Activity logged
+            <select id="taskCompletionType">
+              <option value="follow_up_sent">Follow-up sent</option>
+              <option value="thank_you_sent">Thank-you sent</option>
+              <option value="next_action_completed">Completed next action</option>
+              <option value="note_added">Note added</option>
+            </select>
+          </label>
+          <label>
+            Date done
+            <input id="taskCompletionDate" type="date" required />
+          </label>
+          <label>
+            Contact method
+            <select id="taskCompletionMethod">
+              <option value="email_sent">Email sent</option>
+              <option value="linkedin_message">LinkedIn message</option>
+              <option value="phone_call">Phone call</option>
+              <option value="application_portal">Application portal</option>
+              <option value="other">Other contact</option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          Message or notes
+          <textarea id="taskCompletionNotes" rows="6" placeholder="Paste the email, LinkedIn message, or a short note about what was done."></textarea>
+        </label>
+
+        <div class="dialog-actions">
+          <button type="button" class="secondary-button" data-close-task-completion-dialog>Cancel</button>
+          <button class="primary-button" type="submit">Save completion</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="js/config.js"></script>
+    <script src="js/router.js"></script>
+    <script src="js/utils.js"></script>
+    <script src="js/models.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/navigation.js"></script>
+    <script src="js/actions.js"></script>
+    <script src="js/views.js"></script>
+    <script src="js/analytics.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

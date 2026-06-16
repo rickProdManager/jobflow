@@ -1,0 +1,26 @@
+# Private local runtime data
+data/
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+*.db-journal
+*.db-wal
+*.db-shm
+*.backup*
+
+# Local environment and secrets
+.env
+.env.*
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+
+# macOS and editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+*.swp
+*.swo
+
