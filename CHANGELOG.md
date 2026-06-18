@@ -11,6 +11,7 @@ Version labels are human-readable project milestones. GitHub releases or tags ar
 ### Added
 
 - Added a browser-side session guard that automatically shows the unlock screen before an expired local session causes a save or activity update to fail.
+- Added an Internal contact replied activity type for referral/internal stakeholder responses.
 
 ### Changed
 

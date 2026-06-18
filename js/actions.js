@@ -409,6 +409,7 @@ async function maybeGenerateReminder(activity, appOverride = null) {
     application_submitted: 7,
     follow_up_sent: 7,
     recruiter_replied: 5,
+    internal_contact_replied: 5,
     interview_completed: 1,
   };
 
@@ -422,6 +423,7 @@ async function maybeGenerateReminder(activity, appOverride = null) {
     application_submitted: `Follow up with ${app.companyName}`,
     follow_up_sent: `Check for reply from ${app.companyName}`,
     recruiter_replied: `Reply or prepare next step for ${app.companyName}`,
+    internal_contact_replied: `Reply or prepare next step for ${app.companyName}`,
     interview_completed: `Send thank-you note to ${app.companyName}`,
   };
 

@@ -293,6 +293,7 @@ Common event types:
 - `application_submitted`
 - `follow_up_sent`
 - `recruiter_replied`
+- `internal_contact_replied`
 - `interview_scheduled`
 - `interview_completed`
 - `thank_you_sent`

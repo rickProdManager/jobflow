@@ -20,7 +20,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes and a human-readable history 
 - Attach and track documents used for each application, including resumes, cover letters, and portfolio/work samples.
 - Store uploaded documents locally and retain their paths for later reference.
 - Maintain a dated activity timeline for each application.
-- Record activity types such as application submitted, follow-up sent, recruiter replied, interviews, thank-you notes, offers, rejections, and abandoned applications.
+- Record activity types such as application submitted, follow-up sent, recruiter replies, internal contact replies, interviews, thank-you notes, offers, rejections, and abandoned applications.
 - Manage next actions and follow-up reminders.
 - Mark follow-ups as complete, including contact method and message/notes sent.
 - Mark follow-ups as unavailable when there is no contact information.

@@ -48,6 +48,7 @@ const eventLabels = {
   application_submitted: "Application submitted",
   follow_up_sent: "Follow-up sent",
   recruiter_replied: "Recruiter replied",
+  internal_contact_replied: "Internal contact replied",
   interview_scheduled: "Interview scheduled",
   interview_completed: "Interview completed",
   thank_you_sent: "Thank-you sent",
