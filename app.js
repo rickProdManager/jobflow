@@ -13,12 +13,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 async function startAuthenticatedApp() {
+  document.body.classList.remove("tracker-locked");
   document.getElementById("authView").hidden = true;
   document.getElementById("appShell").hidden = false;
+  startSessionMonitor();
 
   if (appStarted) {
     await loadAll();
     render();
+    restoreDialogsAfterSessionUnlock();
     return;
   }
 
@@ -29,5 +32,6 @@ async function startAuthenticatedApp() {
   syncStateFromUrl();
   replaceHistoryState();
   render();
+  restoreDialogsAfterSessionUnlock();
   appStarted = true;
 }

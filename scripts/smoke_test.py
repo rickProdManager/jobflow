@@ -26,6 +26,7 @@ import server  # noqa: E402
 
 TEST_PASSWORD = "this is a local test passphrase"
 TIMEOUT = 5
+AUTH_IDLE_TIMEOUT_SECONDS = int(server.SESSION_IDLE_TIMEOUT.total_seconds())
 
 
 class SmokeTestError(Exception):
@@ -108,7 +109,12 @@ class SmokeClient:
 
 def run_checks(client):
     expect_status(client, "/", 200)
-    expect_json(client, "/api/auth/status", 200, {"configured": False, "authenticated": False})
+    expect_json(
+        client,
+        "/api/auth/status",
+        200,
+        {"configured": False, "authenticated": False, "idleTimeoutSeconds": AUTH_IDLE_TIMEOUT_SECONDS},
+    )
     expect_status(client, "/api/applications", 401)
     expect_status(client, "/api/auth/setup", 400, method="POST", payload={"password": "too short"})
 
@@ -129,7 +135,19 @@ def run_checks(client):
     applications = parse_json(expect_status(client, "/api/applications", 200)[2])
     expect(any(item["id"] == app["id"] for item in applications), "created application was not returned")
 
-    expect_json(client, "/api/auth/logout", 200, {"ok": True, "configured": True, "authenticated": False}, method="POST", payload={})
+    expect_json(
+        client,
+        "/api/auth/logout",
+        200,
+        {
+            "ok": True,
+            "configured": True,
+            "authenticated": False,
+            "idleTimeoutSeconds": AUTH_IDLE_TIMEOUT_SECONDS,
+        },
+        method="POST",
+        payload={},
+    )
     expect_status(client, "/api/applications", 401)
     expect_status(client, "/api/auth/login", 401, method="POST", payload={"password": "wrong local passphrase"})
 

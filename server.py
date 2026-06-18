@@ -350,6 +350,7 @@ def auth_status_for(handler):
         return {
             "configured": configured,
             "authenticated": configured and authenticated(db, handler),
+            "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
         }
 
 
@@ -424,6 +425,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "error": "Authentication required",
                 "configured": configured,
                 "authenticated": False,
+                "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
             },
         )
         return False
@@ -442,7 +444,12 @@ class Handler(SimpleHTTPRequestHandler):
             return json_response(
                 self,
                 200,
-                {"ok": True, "configured": auth_status_for(self)["configured"], "authenticated": False},
+                {
+                    "ok": True,
+                    "configured": auth_status_for(self)["configured"],
+                    "authenticated": False,
+                    "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
+                },
                 {"Set-Cookie": clear_session_cookie_header()},
             )
 
@@ -496,7 +503,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(
                     self,
                     200,
-                    {"ok": True, "configured": True, "authenticated": True},
+                    {
+                        "ok": True,
+                        "configured": True,
+                        "authenticated": True,
+                        "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
+                    },
                     {"Set-Cookie": session_cookie_header(token)},
                 )
 
@@ -516,7 +528,12 @@ class Handler(SimpleHTTPRequestHandler):
             return json_response(
                 self,
                 200,
-                {"ok": True, "configured": True, "authenticated": True},
+                {
+                    "ok": True,
+                    "configured": True,
+                    "authenticated": True,
+                    "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
+                },
                 {"Set-Cookie": session_cookie_header(token)},
             )
 

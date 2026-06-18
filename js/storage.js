@@ -17,13 +17,13 @@ async function api(path, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401 && !path.startsWith("/auth/") && typeof renderAuthGate === "function") {
-      state.auth = {
-        configured: Boolean(payload?.configured ?? true),
-        authenticated: false,
-      };
-      renderAuthGate(state.auth, "Your tracker is locked. Please unlock it to continue.");
+      handleApiUnauthorized(payload);
     }
     throw new Error(payload?.error || `API request failed: ${response.status}`);
+  }
+
+  if (typeof noteSessionActivityFromApi === "function") {
+    noteSessionActivityFromApi(path, payload);
   }
 
   return payload;

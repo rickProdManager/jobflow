@@ -131,6 +131,7 @@ function renderReminders() {
 function renderAuthGate(auth = state.auth, message = "") {
   const isSetup = !auth.configured;
   const authView = document.getElementById("authView");
+  document.body.classList.add("tracker-locked");
   document.getElementById("appShell").hidden = true;
   authView.hidden = false;
   authView.innerHTML = `

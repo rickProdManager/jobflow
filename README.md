@@ -6,6 +6,10 @@ The app runs locally on your machine, stores data in SQLite, and does not requir
 
 This project was vibe-coded by Ricardo Gonzalez with assistance from OpenAI Codex.
 
+## What's New
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes and a human-readable history of notable app changes.
+
 ## Features
 
 - Track job applications with company, role, location, job URL, work mode, salary range, and current status.
@@ -97,6 +101,7 @@ Stop the server with `Ctrl-C` in the terminal where it is running.
 ```text
 .
 ├── .gitignore              # Excludes private runtime data and local artifacts
+├── CHANGELOG.md            # Release notes and notable changes
 ├── app.js                  # Browser startup
 ├── index.html              # App shell and dialogs
 ├── styles.css              # UI styling
@@ -111,6 +116,7 @@ Stop the server with `Ctrl-C` in the terminal where it is running.
 │   ├── models.js           # App data helpers
 │   ├── navigation.js       # Dashboard drill-down navigation
 │   ├── router.js           # URL/history state
+│   ├── session.js          # Browser-side idle lock/session guard
 │   ├── storage.js          # API client, import/export, uploads
 │   └── views.js            # Main UI rendering
 ├── scripts/

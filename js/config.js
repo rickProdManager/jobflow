@@ -4,6 +4,9 @@ const STALE_AFTER_DAYS = 7;
 const TIMELINE_PAGE_SIZE = 10;
 const API_BASE = "/api";
 const PASSWORD_MIN_LENGTH = 15;
+const DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS = 4 * 60 * 60;
+const SESSION_LOCK_BUFFER_MS = 5000;
+const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 
 const state = {
   applications: [],
@@ -23,6 +26,7 @@ const state = {
   auth: {
     configured: false,
     authenticated: false,
+    idleTimeoutSeconds: DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS,
   },
 };
 
