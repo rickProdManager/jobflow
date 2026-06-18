@@ -670,6 +670,16 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.activity-fields {
+  align-items: end;
+}
+
+.activity-fields input,
+.activity-fields select {
+  height: 44px;
+  line-height: 1.2;
+}
+
 .salary-range-fields {
   display: grid;
   gap: 14px;

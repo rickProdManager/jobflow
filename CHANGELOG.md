@@ -2,16 +2,27 @@
 
 This file tracks notable user-facing, security, documentation, and maintenance changes to Job Tracker.
 
-Use `Unreleased` while changes are in progress. When the public repository is pushed or a meaningful milestone is reached, move those entries into a dated version section and start a fresh `Unreleased` section.
+Use `Unreleased` while changes are in progress. Group unreleased entries by date, then by change type. When the public repository is pushed or a meaningful milestone is reached, move those entries into a dated version section and start a fresh `Unreleased` section.
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
 ## Unreleased
 
-### Added
+### 2026-06-18
+
+#### Added
+
+- Added a browser-side session guard that automatically shows the unlock screen before an expired local session causes a save or activity update to fail.
+
+#### Changed
+
+- Aligned the Add Activity dialog controls so the activity type and date fields render as a cleaner, consistent row.
+
+### 2026-06-17
+
+#### Added
 
 - Added this changelog so future changes can be tracked outside the README.
-- Added a browser-side session guard that automatically shows the unlock screen before an expired local session causes a save or activity update to fail.
 
 ## 0.1.0 - 2026-06-16
 
