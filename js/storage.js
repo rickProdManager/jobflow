@@ -1,4 +1,4 @@
-// SQLite API client, legacy migration, backups, and document uploads.
+// SQLite API client, legacy migration, seed data, backups, and document uploads.
 
 async function api(path, options = {}) {
   const { headers = {}, ...fetchOptions } = options;
@@ -125,9 +125,75 @@ async function loadAll() {
     getAll("tasks"),
   ]);
 
-  state.events = events.sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  state.events = events
+    .map(normalizeEventRecord)
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
   state.tasks = tasks.sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   state.applications = applications.sort(compareApplicationsForList);
+}
+
+async function seedIfEmpty() {
+  const applications = await getAll("applications");
+  if (applications.length) return;
+
+  const now = new Date();
+  const sampleApplication = {
+    id: crypto.randomUUID(),
+    companyName: "Northstar Labs",
+    jobTitle: "Product Engineer",
+    stage: "Applied",
+    applicationPath: "referral",
+    source: "Referral",
+    referrerName: "Maya Patel",
+    referrerContact: "linkedin.com/in/maya-patel",
+    headhunterName: "",
+    headhunterContact: "",
+    location: "Remote",
+    workMode: "Remote",
+    salaryMin: 130000,
+    salaryMax: 160000,
+    salaryRange: "$130k - $160k",
+    jobUrl: "https://example.com/product-engineer",
+    resumeName: "Product Engineer Resume v2",
+    resumePath: "/Documents/Resumes/product-engineer-v2.pdf",
+    coverLetterName: "Northstar Labs Cover Letter",
+    coverLetterPath: "/Documents/Cover Letters/northstar-labs.pdf",
+    portfolioPath: "https://example.com/portfolio/product-work",
+    tailoredDocuments: true,
+    documentNotes: "Emphasized product analytics, frontend systems, and startup experience.",
+    excitement: 4,
+    fit: 4,
+    notes: "Sample record. Edit or delete this when you are ready.",
+    createdAt: toDateInput(daysAgo(10)),
+    updatedAt: now.toISOString(),
+  };
+
+  const submittedEvent = {
+    id: crypto.randomUUID(),
+    applicationId: sampleApplication.id,
+    type: "application_submitted",
+    title: eventLabels.application_submitted,
+    description: "Submitted tailored resume through referral link.",
+    occurredAt: toDateInput(daysAgo(8)),
+    createdAt: now.toISOString(),
+  };
+
+  const followUpTask = {
+    id: crypto.randomUUID(),
+    applicationId: sampleApplication.id,
+    title: "Follow up with Northstar Labs",
+    dueAt: toDateInput(daysAgo(1)),
+    completedAt: "",
+    source: "auto",
+    relatedEventId: submittedEvent.id,
+    createdAt: now.toISOString(),
+  };
+
+  await Promise.all([
+    put("applications", sampleApplication),
+    put("events", submittedEvent),
+    put("tasks", followUpTask),
+  ]);
 }
 
 async function exportData() {

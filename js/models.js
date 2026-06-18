@@ -12,24 +12,37 @@ function filteredApplications() {
 
 
 function compareApplicationsForList(a, b) {
-  const stageA = applicationStage(a);
-  const stageB = applicationStage(b);
-  const statusRankA = applicationListRank(stageA);
-  const statusRankB = applicationListRank(stageB);
-
-  if (statusRankA !== statusRankB) return statusRankA - statusRankB;
-
-  const lastA = lastActivityDate(a.id) || dateOnly(a.updatedAt) || a.createdAt || "";
-  const lastB = lastActivityDate(b.id) || dateOnly(b.updatedAt) || b.createdAt || "";
+  const lastA = lastActivitySortKey(a);
+  const lastB = lastActivitySortKey(b);
   if (lastA !== lastB) return lastB.localeCompare(lastA);
 
   return `${a.companyName} ${a.jobTitle}`.localeCompare(`${b.companyName} ${b.jobTitle}`);
 }
 
-function applicationListRank(stage) {
-  if (stage === "Abandoned") return 3;
-  if (["Rejected", "Withdrawn", "Ghosted", "Offer"].includes(stage)) return 2;
-  return 1;
+function lastActivitySortKey(app) {
+  const latestEvent = applicationRankingEventsFor(app.id)
+    .map((event) => `${dateOnly(event.occurredAt)} ${event.createdAt || ""}`)
+    .sort()
+    .at(-1);
+  if (latestEvent) return latestEvent;
+
+  const fallbackDate = dateOnly(app.updatedAt) || app.createdAt || "";
+  return `${fallbackDate} ${app.updatedAt || app.createdAt || ""}`;
+}
+
+function applicationRankingEventsFor(applicationId) {
+  return eventsFor(applicationId).filter((event) => (
+    event.type !== "job_saved" &&
+    !isNextActionMenuEvent(event)
+  ));
+}
+
+function isNextActionMenuEvent(event) {
+  return (
+    event.source === "next_action" ||
+    event.type === "next_action_completed" ||
+    event.type === "next_action_unavailable"
+  );
 }
 
 function inferApplicationPath(app) {
@@ -128,7 +141,23 @@ function eventsFor(applicationId) {
 
 function eventDisplayLabel(event) {
   if (!event) return "";
-  return eventLabels[event.type] || event.title || event.type;
+  return eventLabels[event.type] || normalizeActivityLabel(event.title) || normalizeActivityLabel(event.type);
+}
+
+function normalizeEventRecord(event) {
+  if (!event || !eventLabels[event.type]) return event;
+  return {
+    ...event,
+    title: eventLabels[event.type],
+  };
+}
+
+function normalizeActivityLabel(value) {
+  if (!value) return "";
+  const text = String(value).trim();
+  if (eventLabels[text]) return eventLabels[text];
+  if (text === "internal_contact_replied") return eventLabels.internal_contact_replied;
+  return text.includes("_") ? text.replace(/_/g, " ") : text;
 }
 
 function dueTasks() {

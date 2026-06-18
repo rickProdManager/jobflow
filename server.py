@@ -31,6 +31,12 @@ DOCUMENTS_DIR = DATA_DIR / "documents"
 # JSON-backed application data tables exposed through the generic CRUD API.
 TABLES = ("applications", "events", "tasks")
 
+# Canonical labels returned by the API for event records. This keeps older
+# saved records from leaking internal event codes into the UI.
+EVENT_LABELS = {
+    "internal_contact_replied": "Internal Contact Replied",
+}
+
 # Request limits keep local mistakes or unexpected browser input bounded.
 MAX_JSON_BODY_BYTES = 25 * 1024 * 1024
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024
@@ -231,6 +237,15 @@ def is_same_origin_request(handler):
 
 def validate_record(record):
     return isinstance(record, dict) and isinstance(record.get("id"), str) and record["id"].strip()
+
+
+def normalize_record(table, record):
+    if table != "events" or not isinstance(record, dict):
+        return record
+    label = EVENT_LABELS.get(record.get("type"))
+    if not label:
+        return record
+    return {**record, "title": label}
 
 
 def read_json_or_error(handler):
@@ -538,6 +553,7 @@ class Handler(SimpleHTTPRequestHandler):
             )
 
     def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'")
@@ -570,7 +586,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         with connect() as db:
             rows = db.execute(f"SELECT data FROM {table}").fetchall()
-        records = [json.loads(row["data"]) for row in rows]
+        records = [normalize_record(table, json.loads(row["data"])) for row in rows]
         json_response(self, 200, records)
 
     def do_PUT(self):
@@ -596,6 +612,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not validate_record(record):
             return json_response(self, 400, {"error": "Record requires an id"})
 
+        record = normalize_record(table, record)
         meta = metadata(table, record)
         with connect() as db:
             if table == "applications":

@@ -135,6 +135,18 @@ def run_checks(client):
     applications = parse_json(expect_status(client, "/api/applications", 200)[2])
     expect(any(item["id"] == app["id"] for item in applications), "created application was not returned")
 
+    event = {
+        "id": "smoke-test-event",
+        "applicationId": app["id"],
+        "type": "internal_contact_replied",
+        "occurredAt": "2026-06-16",
+        "createdAt": "2026-06-16T00:00:00Z",
+    }
+    expect_status(client, "/api/events", 200, method="PUT", payload=event)
+    events = parse_json(expect_status(client, "/api/events", 200)[2])
+    saved_event = next((item for item in events if item["id"] == event["id"]), None)
+    expect(saved_event and saved_event.get("title") == "Internal Contact Replied", "internal contact event label was not normalized")
+
     expect_json(
         client,
         "/api/auth/logout",
