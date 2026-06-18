@@ -11,10 +11,11 @@ Version labels are human-readable project milestones. GitHub releases or tags ar
 ### Added
 
 - Added a browser-side session guard that automatically shows the unlock screen before an expired local session causes a save or activity update to fail.
-- Added an Internal contact replied activity type for referral/internal stakeholder responses.
+- Added an Internal Contact Replied activity type for referral/internal stakeholder responses.
 
 ### Changed
 
+- Standardized activity display labels so views prefer canonical labels over stored/raw event titles.
 - Aligned the Add Activity dialog controls so the activity type and date fields render as a cleaner, consistent row.
 
 ## 2026-06-17

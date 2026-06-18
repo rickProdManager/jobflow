@@ -126,6 +126,11 @@ function eventsFor(applicationId) {
   return state.events.filter((event) => event.applicationId === applicationId);
 }
 
+function eventDisplayLabel(event) {
+  if (!event) return "";
+  return eventLabels[event.type] || event.title || event.type;
+}
+
 function dueTasks() {
   return state.tasks.filter((task) => !task.completedAt && new Date(task.dueAt) <= endOfToday());
 }

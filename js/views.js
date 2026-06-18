@@ -356,7 +356,7 @@ function renderTimeline(events, options = {}) {
 
   return events.map((event) => {
     const app = state.applications.find((item) => item.id === event.applicationId);
-    const label = event.title || eventLabels[event.type] || event.type;
+    const label = eventDisplayLabel(event);
     const isLinked = app && !options.editable;
     const heading = isLinked ? `${app.jobTitle}` : label;
     return `

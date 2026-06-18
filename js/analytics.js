@@ -312,7 +312,7 @@ function applicationTimelineGraphPoints(app) {
     .forEach((event) => {
       const date = dateOnly(event.occurredAt);
       points.push({
-        label: shortTimelineLabel(event.title || eventLabels[event.type] || event.type),
+        label: shortTimelineLabel(eventDisplayLabel(event)),
         date,
         kind: timelineKindForEvent(event.type),
         sortKey: `${date}T01:00:00.000Z-${event.createdAt || ""}`,
@@ -582,7 +582,7 @@ function applicationTimelinePoints(app) {
 
   visibleEvents(eventsFor(app.id)).forEach((event) => {
     points.push({
-      label: event.title || eventLabels[event.type] || event.type,
+      label: eventDisplayLabel(event),
       date: dateOnly(event.occurredAt),
       sortKey: `${dateOnly(event.occurredAt)}T01:00:00.000Z-${event.createdAt || ""}`,
     });

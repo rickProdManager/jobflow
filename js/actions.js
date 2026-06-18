@@ -70,7 +70,7 @@ function bindCardActions() {
     button.addEventListener("click", async () => {
       const activity = state.events.find((item) => item.id === button.dataset.deleteActivity);
       if (!activity) return;
-      const label = activity.title || eventLabels[activity.type] || activity.type;
+      const label = eventDisplayLabel(activity);
       if (!confirm(`Delete activity "${label}" from ${formatDate(activity.occurredAt)}?`)) return;
       await deleteActivity(activity);
     });
@@ -335,7 +335,7 @@ async function saveActivity(event) {
 
   const duplicate = findDuplicateActivity({ id, applicationId, type, occurredAt });
   if (duplicate) {
-    const duplicateLabel = duplicate.title || eventLabels[duplicate.type] || duplicate.type;
+    const duplicateLabel = eventDisplayLabel(duplicate);
     const acknowledged = confirm(
       `This application already has "${duplicateLabel}" on ${formatDate(duplicate.occurredAt)}. ${existing ? "Save" : "Add"} it anyway?`
     );
