@@ -16,6 +16,7 @@ Version labels are human-readable project milestones. GitHub releases or tags ar
 ### Changed
 
 - Standardized activity display labels so views prefer canonical labels over stored/raw event titles.
+- Sorted the Applications view by the latest meaningful user-added activity while ignoring Next Action menu completion/unavailable events.
 - Aligned the Add Activity dialog controls so the activity type and date fields render as a cleaner, consistent row.
 
 ## 2026-06-17

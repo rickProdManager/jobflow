@@ -215,6 +215,7 @@ async function completeNextAction(task, outcome = "done", details = {}) {
     description: isUnavailable ? unavailableDescription : completionDescription,
     occurredAt: completedDate,
     createdAt: completedAt,
+    source: "next_action",
   };
 
   await put("tasks", updatedTask);
