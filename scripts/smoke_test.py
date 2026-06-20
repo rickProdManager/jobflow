@@ -7,6 +7,8 @@ auth/API lifecycle without touching real tracker data.
 """
 
 import json
+import os
+import stat
 import sys
 import tempfile
 import threading
@@ -42,6 +44,7 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         configure_temp_database(tmp)
         server.init_db()
+        assert_private_storage_permissions()
 
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler)
         port = httpd.server_address[1]
@@ -63,6 +66,19 @@ def configure_temp_database(tmp):
     server.DATA_DIR = temp_root / "data"
     server.DB_PATH = server.DATA_DIR / "job-tracker.sqlite"
     server.DOCUMENTS_DIR = server.DATA_DIR / "documents"
+
+
+def assert_private_storage_permissions():
+    if os.name != "posix":
+        return
+    expected = {
+        server.DATA_DIR: server.PRIVATE_DIR_MODE,
+        server.DOCUMENTS_DIR: server.PRIVATE_DIR_MODE,
+        server.DB_PATH: server.PRIVATE_FILE_MODE,
+    }
+    for path, mode in expected.items():
+        actual = stat.S_IMODE(path.stat().st_mode)
+        expect(actual == mode, f"{path} expected mode {oct(mode)}, got {oct(actual)}")
 
 
 class SmokeClient:

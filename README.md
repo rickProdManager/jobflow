@@ -160,6 +160,7 @@ Current protections:
 - state-changing API routes reject cross-origin writes
 - static file serving is allowlisted
 - private files under `data/` are not served as static files
+- runtime files under `data/` are permission-hardened for the current OS user on POSIX filesystems
 - request and upload sizes are limited
 
 All of this is implemented with the Python standard library; the project still has no third-party dependencies and no build step.
@@ -167,9 +168,10 @@ All of this is implemented with the Python standard library; the project still h
 Important limitations:
 
 - SQLite data is not encrypted at rest.
-- Anyone with filesystem access to the project folder can copy the database and uploaded documents.
+- Anyone with same-user filesystem access to the project folder can copy the database and uploaded documents.
 - The app is not designed for public internet exposure.
 - The local passphrase protects the browser/API layer, not the raw files on disk.
+- Use FileVault, an encrypted volume/disk image, or a future SQLCipher/encrypted-database build if raw file confidentiality after device theft is part of your threat model.
 
 Do not expose this server directly to the public internet. The app does not implement multi-user authorization, tenant isolation, hosted deployment hardening, HTTPS termination, managed secret rotation, or production-grade monitoring.
 

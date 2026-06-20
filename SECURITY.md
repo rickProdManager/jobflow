@@ -19,6 +19,7 @@ Current protections include:
 - same-origin checks for state-changing requests
 - static file allowlisting
 - blocked static access to private runtime data under `data/`
+- private runtime file permissions for `data/`, SQLite files, sidecars, and uploaded documents on POSIX filesystems
 - JSON request size limits
 - file upload size limits
 
@@ -45,9 +46,11 @@ Important limitations:
 
 - SQLite data is not encrypted at rest.
 - Uploaded documents are stored locally under `data/documents/`.
-- Anyone with filesystem access to the project folder can copy the database and uploaded documents.
+- Runtime file permissions reduce accidental exposure to other local users, but they do not protect against a process running as your OS account.
+- Anyone with filesystem access as the same OS user can still copy the database and uploaded documents.
 - The local unlock passphrase protects the browser/API layer, not raw files on disk.
-- The app does not implement multi-user authorization, tenant isolation, hosted deployment hardening, HTTPS termination, managed secret rotation, audit logging, or production monitoring.
+- To protect raw files on a stolen laptop, use FileVault, an encrypted volume/disk image, or a future SQLCipher/encrypted-database build.
+- The app does not implement multi-user authorization, tenant isolation, hosted deployment hardening, HTTPS termination, managed secret rotation, or production monitoring.
 
 ## Sensitive Data
 
