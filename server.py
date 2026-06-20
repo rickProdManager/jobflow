@@ -7,13 +7,14 @@ import hmac
 import posixpath
 import re
 import secrets
+import struct
 import threading
 import time
 import uuid
 from http.cookies import CookieError, SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import quote, unquote, urlparse
 from datetime import datetime, timedelta, timezone
 
 
@@ -50,7 +51,36 @@ STATIC_DIRS = {"js"}
 # single-user local app; it is not a replacement for disk encryption.
 SESSION_COOKIE = "job_tracker_session"
 PASSWORD_MIN_LENGTH = 15
-PBKDF2_ITERATIONS = 600_000
+
+# Credential hardening. The previous build derived the passphrase hash with
+# PBKDF2 (600k iterations). PBKDF2 is purely compute-bound, which makes it
+# cheap to attack on commodity GPUs/ASICs. We migrate to scrypt, a
+# memory-hard KDF, so an offline cracker has to pay for ~256 MiB of RAM per
+# guess instead of a fistful of SHA-256 rounds. (Phase 2: Argon2id once we are
+# permitted a third-party dependency; scrypt is the strongest stdlib option.)
+SCRYPT_N = 2 ** 15
+SCRYPT_R = 8
+SCRYPT_P = 1
+SCRYPT_DKLEN = 64
+SCRYPT_SALT_BYTES = 32
+SCRYPT_MAXMEM = 256 * 1024 * 1024
+
+# Mandatory second factor (RFC 6238 TOTP). Possession of the local passphrase
+# is no longer sufficient to read application data; the operator must also
+# present a time-based one-time code from an enrolled authenticator. Hand-rolled
+# on hmac/struct to preserve the project's zero-dependency posture.
+TOTP_DIGITS = 6
+TOTP_PERIOD = 30
+TOTP_DRIFT_WINDOW = 1
+TOTP_ISSUER = "Job Tracker (localhost)"
+TOTP_ACCOUNT = "local-operator"
+
+# Tamper-evident audit ledger. Every privileged read or mutation is appended to
+# a hash-chained log so that after-the-fact tampering with the ledger is
+# detectable. Genesis is the all-zero digest.
+AUDIT_GENESIS = "0" * 64
+AUDIT_ACTOR = "local-operator"
+
 SESSION_IDLE_TIMEOUT = timedelta(hours=4)
 
 # In-memory login throttling for this server process. It slows repeated bad
@@ -129,6 +159,8 @@ def init_db():
               password_hash TEXT NOT NULL,
               password_salt TEXT NOT NULL,
               iterations INTEGER NOT NULL,
+              kdf_params TEXT NOT NULL DEFAULT '{}',
+              totp_secret TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
@@ -142,8 +174,30 @@ def init_db():
             );
 
             CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at);
+
+            CREATE TABLE IF NOT EXISTS audit_log (
+              seq INTEGER PRIMARY KEY AUTOINCREMENT,
+              ts TEXT NOT NULL,
+              actor TEXT NOT NULL,
+              action TEXT NOT NULL,
+              detail TEXT NOT NULL,
+              prev_hash TEXT NOT NULL,
+              entry_hash TEXT NOT NULL
+            );
             """
         )
+
+        # Online migration for databases created before zero-trust hardening.
+        # `CREATE TABLE IF NOT EXISTS` will not retrofit columns onto an existing
+        # auth_users row, so add them explicitly when absent.
+        ensure_column(db, "auth_users", "kdf_params", "TEXT NOT NULL DEFAULT '{}'")
+        ensure_column(db, "auth_users", "totp_secret", "TEXT NOT NULL DEFAULT ''")
+
+
+def ensure_column(db, table, column, declaration):
+    existing = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+    if column not in existing:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
 
 
 def table_from_path(path):
@@ -265,24 +319,160 @@ def iso_utc(value):
 
 
 # Passwords are never stored directly. The auth table keeps a random salt and a
-# PBKDF2-HMAC-SHA256 hash so the local passphrase is not recoverable from SQLite.
-def hash_password(password, salt=None, iterations=PBKDF2_ITERATIONS):
-    salt = salt or secrets.token_bytes(32)
-    password_hash = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+# memory-hard scrypt hash so the local passphrase is not recoverable from SQLite
+# and is expensive to brute-force offline even with GPU/ASIC acceleration.
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_bytes(SCRYPT_SALT_BYTES)
+    derived = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=SCRYPT_N,
+        r=SCRYPT_R,
+        p=SCRYPT_P,
+        maxmem=SCRYPT_MAXMEM,
+        dklen=SCRYPT_DKLEN,
+    )
     return {
-        "hash": base64.b64encode(password_hash).decode("ascii"),
+        "hash": base64.b64encode(derived).decode("ascii"),
         "salt": base64.b64encode(salt).decode("ascii"),
-        "iterations": iterations,
+        "params": {"algo": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P, "dklen": SCRYPT_DKLEN},
     }
+
+
+def is_legacy_kdf(user):
+    # Pre-hardening databases stored a PBKDF2 hash and left kdf_params empty.
+    try:
+        params = json.loads(user["kdf_params"] or "{}")
+    except Exception:
+        return True
+    return params.get("algo") != "scrypt"
 
 
 def verify_password(password, user):
     try:
         salt = base64.b64decode(user["password_salt"])
+        params = json.loads(user["kdf_params"] or "{}")
     except Exception:
         return False
-    candidate = hash_password(password, salt=salt, iterations=int(user["iterations"]))
-    return hmac.compare_digest(candidate["hash"], user["password_hash"])
+
+    if params.get("algo") != "scrypt":
+        # Backward compatibility: verify legacy PBKDF2-HMAC-SHA256 credentials so
+        # existing operators are never locked out by the migration. Successful
+        # logins are transparently rehashed to scrypt (see handle_auth_post).
+        legacy_hash = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, int(user["iterations"])
+        )
+        return hmac.compare_digest(base64.b64encode(legacy_hash).decode("ascii"), user["password_hash"])
+
+    derived = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=int(params.get("n", SCRYPT_N)),
+        r=int(params.get("r", SCRYPT_R)),
+        p=int(params.get("p", SCRYPT_P)),
+        maxmem=SCRYPT_MAXMEM,
+        dklen=int(params.get("dklen", SCRYPT_DKLEN)),
+    )
+    return hmac.compare_digest(base64.b64encode(derived).decode("ascii"), user["password_hash"])
+
+
+def upgrade_password_hash(db, password):
+    # Transparent KDF upgrade on successful legacy login.
+    password_data = hash_password(password)
+    db.execute(
+        "UPDATE auth_users SET password_hash = ?, password_salt = ?, iterations = ?, kdf_params = ?, updated_at = ? WHERE id = 1",
+        (
+            password_data["hash"],
+            password_data["salt"],
+            SCRYPT_N,
+            json.dumps(password_data["params"]),
+            iso_utc(now_utc()),
+        ),
+    )
+
+
+def enroll_second_factor(db):
+    # Provision a TOTP secret for an operator who predates 2FA enforcement.
+    secret = generate_totp_secret()
+    db.execute(
+        "UPDATE auth_users SET totp_secret = ?, updated_at = ? WHERE id = 1",
+        (secret, iso_utc(now_utc())),
+    )
+    return secret
+
+
+# --- Mandatory second factor: RFC 6238 TOTP, hand-rolled on the standard lib ---
+def generate_totp_secret():
+    # 160-bit secret -> 32 base32 chars, no padding. Standard authenticator size.
+    return base64.b32encode(secrets.token_bytes(20)).decode("ascii")
+
+
+def _totp_at(secret_b32, counter):
+    key = base64.b32decode(secret_b32, casefold=True)
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    truncated = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(truncated % (10 ** TOTP_DIGITS)).zfill(TOTP_DIGITS)
+
+
+def generate_totp(secret_b32, for_time=None):
+    if for_time is None:
+        for_time = time.time()
+    return _totp_at(secret_b32, int(for_time // TOTP_PERIOD))
+
+
+def verify_totp(secret_b32, code):
+    if not secret_b32 or not code:
+        return False
+    code = str(code).strip()
+    if not code.isdigit() or len(code) != TOTP_DIGITS:
+        return False
+    counter = int(time.time() // TOTP_PERIOD)
+    # Accept a small clock-drift window on either side of the current step.
+    for drift in range(-TOTP_DRIFT_WINDOW, TOTP_DRIFT_WINDOW + 1):
+        if hmac.compare_digest(_totp_at(secret_b32, counter + drift), code):
+            return True
+    return False
+
+
+def totp_provisioning_uri(secret):
+    label = quote(f"{TOTP_ISSUER}:{TOTP_ACCOUNT}")
+    return (
+        f"otpauth://totp/{label}?secret={secret}&issuer={quote(TOTP_ISSUER)}"
+        f"&algorithm=SHA1&digits={TOTP_DIGITS}&period={TOTP_PERIOD}"
+    )
+
+
+def totp_manual_key(secret):
+    # Grouped into quads so a human can transcribe it into an authenticator app.
+    return " ".join(secret[i:i + 4] for i in range(0, len(secret), 4))
+
+
+# --- Tamper-evident, hash-chained audit ledger -----------------------------
+def audit(db, action, detail=""):
+    prev_row = db.execute("SELECT entry_hash FROM audit_log ORDER BY seq DESC LIMIT 1").fetchone()
+    prev_hash = prev_row["entry_hash"] if prev_row else AUDIT_GENESIS
+    ts = iso_utc(now_utc())
+    payload = "|".join([ts, AUDIT_ACTOR, action, detail, prev_hash])
+    entry_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    db.execute(
+        "INSERT INTO audit_log (ts, actor, action, detail, prev_hash, entry_hash) VALUES (?, ?, ?, ?, ?, ?)",
+        (ts, AUDIT_ACTOR, action, detail, prev_hash, entry_hash),
+    )
+
+
+def verify_audit_chain(db):
+    prev_hash = AUDIT_GENESIS
+    for row in db.execute(
+        "SELECT ts, actor, action, detail, prev_hash, entry_hash FROM audit_log ORDER BY seq ASC"
+    ):
+        if row["prev_hash"] != prev_hash:
+            return False
+        payload = "|".join([row["ts"], row["actor"], row["action"], row["detail"], prev_hash])
+        if hashlib.sha256(payload.encode("utf-8")).hexdigest() != row["entry_hash"]:
+            return False
+        prev_hash = row["entry_hash"]
+    return True
 
 
 # Session tokens are bearer secrets. Store only their SHA-256 digest in SQLite;
@@ -359,14 +549,28 @@ def authenticated(db, handler):
     return True
 
 
+def two_factor_enrolled(db):
+    row = db.execute("SELECT totp_secret FROM auth_users WHERE id = 1").fetchone()
+    return bool(row and row["totp_secret"])
+
+
+def auth_state_fields(configured, authenticated_flag, two_factor):
+    return {
+        "configured": configured,
+        "authenticated": authenticated_flag,
+        "twoFactorEnrolled": two_factor,
+        "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
+    }
+
+
 def auth_status_for(handler):
     with connect() as db:
         configured = auth_configured(db)
-        return {
-            "configured": configured,
-            "authenticated": configured and authenticated(db, handler),
-            "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
-        }
+        return auth_state_fields(
+            configured,
+            configured and authenticated(db, handler),
+            configured and two_factor_enrolled(db),
+        )
 
 
 # Login throttling is process-local by design: enough friction for a personal
@@ -431,17 +635,13 @@ class Handler(SimpleHTTPRequestHandler):
         # gate after the local passphrase has been configured.
         with connect() as db:
             configured = auth_configured(db)
+            two_factor = configured and two_factor_enrolled(db)
             if configured and authenticated(db, self):
                 return True
         json_response(
             self,
             401,
-            {
-                "error": "Authentication required",
-                "configured": configured,
-                "authenticated": False,
-                "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
-            },
+            {"error": "Authentication required", **auth_state_fields(configured, False, two_factor)},
         )
         return False
 
@@ -453,18 +653,16 @@ class Handler(SimpleHTTPRequestHandler):
     def handle_auth_post(self, path):
         if path == "/api/auth/logout":
             token = get_cookie_token(self)
-            if token:
-                with connect() as db:
+            with connect() as db:
+                if token:
                     db.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_digest(token),))
+                configured = auth_configured(db)
+                two_factor = configured and two_factor_enrolled(db)
+                audit(db, "auth.logout", "session ended")
             return json_response(
                 self,
                 200,
-                {
-                    "ok": True,
-                    "configured": auth_status_for(self)["configured"],
-                    "authenticated": False,
-                    "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
-                },
+                {"ok": True, **auth_state_fields(configured, False, two_factor)},
                 {"Set-Cookie": clear_session_cookie_header()},
             )
 
@@ -499,30 +697,41 @@ class Handler(SimpleHTTPRequestHandler):
                 if configured:
                     return json_response(self, 409, {"error": "Local authentication is already configured."})
                 password_data = hash_password(password)
+                totp_secret = generate_totp_secret()
                 now = iso_utc(now_utc())
                 db.execute(
                     """
-                    INSERT INTO auth_users (id, password_hash, password_salt, iterations, created_at, updated_at)
-                    VALUES (1, ?, ?, ?, ?, ?)
+                    INSERT INTO auth_users (id, password_hash, password_salt, iterations, kdf_params, totp_secret, created_at, updated_at)
+                    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         password_data["hash"],
                         password_data["salt"],
-                        password_data["iterations"],
+                        SCRYPT_N,
+                        json.dumps(password_data["params"]),
+                        totp_secret,
                         now,
                         now,
                     ),
                 )
                 token = create_session(db)
+                audit(db, "auth.setup", "passphrase + 2FA enrolled")
                 clear_failed_login(self.client_address[0])
                 return json_response(
                     self,
                     200,
                     {
                         "ok": True,
-                        "configured": True,
-                        "authenticated": True,
-                        "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
+                        **auth_state_fields(True, True, True),
+                        # First-run 2FA enrollment payload. Returned exactly once,
+                        # at setup, so the operator can register an authenticator.
+                        "twoFactor": {
+                            "secret": totp_secret,
+                            "manualKey": totp_manual_key(totp_secret),
+                            "provisioningUri": totp_provisioning_uri(totp_secret),
+                            "digits": TOTP_DIGITS,
+                            "period": TOTP_PERIOD,
+                        },
                     },
                     {"Set-Cookie": session_cookie_header(token)},
                 )
@@ -533,22 +742,65 @@ class Handler(SimpleHTTPRequestHandler):
             user = db.execute("SELECT * FROM auth_users WHERE id = 1").fetchone()
             if not user or not verify_password(password, user):
                 record_failed_login(self.client_address[0])
+                audit(db, "auth.login.denied", "passphrase rejected")
                 time.sleep(0.25)
                 return json_response(self, 401, {"error": "Could not unlock tracker."})
+
+            # Transparently upgrade legacy PBKDF2 credentials to scrypt so the
+            # migration never strands an existing operator.
+            if is_legacy_kdf(user):
+                upgrade_password_hash(db, password)
+                audit(db, "auth.kdf.upgraded", "pbkdf2 -> scrypt")
+
+            # Grace enrollment: an operator who predates 2FA enforcement has a
+            # correct passphrase but no enrolled secret. Provision one now and
+            # hand it back so the browser can complete enrollment, rather than
+            # locking them out.
+            if not user["totp_secret"]:
+                secret = enroll_second_factor(db)
+                db.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_digest(get_cookie_token(self)),))
+                token = create_session(db)
+                audit(db, "auth.2fa.enrolled", "grace enrollment on first hardened login")
+                clear_failed_login(self.client_address[0])
+                return json_response(
+                    self,
+                    200,
+                    {
+                        "ok": True,
+                        **auth_state_fields(True, True, True),
+                        "twoFactor": {
+                            "secret": secret,
+                            "manualKey": totp_manual_key(secret),
+                            "provisioningUri": totp_provisioning_uri(secret),
+                            "digits": TOTP_DIGITS,
+                            "period": TOTP_PERIOD,
+                        },
+                    },
+                    {"Set-Cookie": session_cookie_header(token)},
+                )
+
+            # Knowledge of the passphrase is not sufficient. The operator must
+            # also present a valid second factor before any session is issued.
+            totp_code = payload.get("totpCode") if isinstance(payload, dict) else ""
+            if not verify_totp(user["totp_secret"], totp_code):
+                record_failed_login(self.client_address[0])
+                audit(db, "auth.login.denied", "second factor rejected")
+                time.sleep(0.25)
+                return json_response(
+                    self,
+                    401,
+                    {"error": "Enter the 6-digit code from your authenticator app."},
+                )
 
             # Rotate the current browser session on successful login.
             db.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_digest(get_cookie_token(self)),))
             token = create_session(db)
+            audit(db, "auth.login", "passphrase + second factor verified")
             clear_failed_login(self.client_address[0])
             return json_response(
                 self,
                 200,
-                {
-                    "ok": True,
-                    "configured": True,
-                    "authenticated": True,
-                    "idleTimeoutSeconds": int(SESSION_IDLE_TIMEOUT.total_seconds()),
-                },
+                {"ok": True, **auth_state_fields(True, True, True)},
                 {"Set-Cookie": session_cookie_header(token)},
             )
 
@@ -574,6 +826,20 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/auth/"):
             return self.handle_auth_get(parsed.path)
 
+        if parsed.path == "/api/audit":
+            if not self.require_auth():
+                return
+            with connect() as db:
+                rows = db.execute(
+                    "SELECT seq, ts, action, detail, entry_hash FROM audit_log ORDER BY seq ASC"
+                ).fetchall()
+                chain_intact = verify_audit_chain(db)
+            return json_response(
+                self,
+                200,
+                {"entries": [dict(row) for row in rows], "count": len(rows), "chainIntact": chain_intact},
+            )
+
         table = table_from_path(parsed.path)
 
         if not table:
@@ -586,6 +852,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         with connect() as db:
             rows = db.execute(f"SELECT data FROM {table}").fetchall()
+            audit(db, "data.read", table)
         records = [normalize_record(table, json.loads(row["data"])) for row in rows]
         json_response(self, 200, records)
 
@@ -667,6 +934,7 @@ class Handler(SimpleHTTPRequestHandler):
                         meta["created_at"],
                     ),
                 )
+            audit(db, "data.write", f"{table}/{record['id']}")
 
         json_response(self, 200, record)
 
@@ -687,6 +955,7 @@ class Handler(SimpleHTTPRequestHandler):
 
         with connect() as db:
             db.execute(f"DELETE FROM {table} WHERE id = ?", (record_id,))
+            audit(db, "data.delete", f"{table}/{record_id}")
         json_response(self, 200, {"ok": True})
 
     def do_POST(self):
@@ -741,6 +1010,7 @@ class Handler(SimpleHTTPRequestHandler):
                         created_at,
                     ),
                 )
+                audit(db, "file.upload", f"{stored_name} ({len(file_bytes)} bytes)")
 
             return json_response(
                 self,
@@ -797,6 +1067,8 @@ class Handler(SimpleHTTPRequestHandler):
                         meta["created_at"],
                     ),
                 )
+            counts = "/".join(f"{table}:{len(payload[table])}" for table in TABLES)
+            audit(db, "data.import", f"replaced all tables ({counts})")
 
         json_response(self, 200, {"ok": True})
 
@@ -812,6 +1084,7 @@ def main():
     server = ThreadingHTTPServer(("localhost", 4173), Handler)
     print(f"Serving http://localhost:4173")
     print(f"SQLite database: {DB_PATH}")
+    print("Security posture: scrypt KDF + mandatory TOTP 2FA + tamper-evident audit ledger")
     server.serve_forever()
 
 

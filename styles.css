@@ -227,6 +227,28 @@ h3 {
   padding: 10px 12px;
 }
 
+.auth-2fa-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.auth-2fa-key {
+  display: block;
+  background: var(--surface, #f4f4f5);
+  border: 1px solid var(--border, #d4d4d8);
+  border-radius: 8px;
+  color: var(--text, #18181b);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  overflow-wrap: anywhere;
+  padding: 10px 12px;
+  word-break: break-all;
+}
+
 .view {
   display: none;
 }

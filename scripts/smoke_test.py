@@ -113,7 +113,12 @@ def run_checks(client):
         client,
         "/api/auth/status",
         200,
-        {"configured": False, "authenticated": False, "idleTimeoutSeconds": AUTH_IDLE_TIMEOUT_SECONDS},
+        {
+            "configured": False,
+            "authenticated": False,
+            "twoFactorEnrolled": False,
+            "idleTimeoutSeconds": AUTH_IDLE_TIMEOUT_SECONDS,
+        },
     )
     expect_status(client, "/api/applications", 401)
     expect_status(client, "/api/auth/setup", 400, method="POST", payload={"password": "too short"})
@@ -121,6 +126,9 @@ def run_checks(client):
     status, _, body = client.request("/api/auth/setup", method="POST", payload={"password": TEST_PASSWORD})
     expect(status == 200, f"setup failed: {body[:200]!r}")
     expect(client.cookie_header, "setup did not return a session cookie")
+    setup_payload = parse_json(body)
+    totp_secret = setup_payload.get("twoFactor", {}).get("secret")
+    expect(totp_secret, "setup did not return a 2FA enrollment secret")
 
     expect_json(client, "/api/applications", 200, [])
     app = {
@@ -155,6 +163,7 @@ def run_checks(client):
             "ok": True,
             "configured": True,
             "authenticated": False,
+            "twoFactorEnrolled": True,
             "idleTimeoutSeconds": AUTH_IDLE_TIMEOUT_SECONDS,
         },
         method="POST",
@@ -163,7 +172,20 @@ def run_checks(client):
     expect_status(client, "/api/applications", 401)
     expect_status(client, "/api/auth/login", 401, method="POST", payload={"password": "wrong local passphrase"})
 
-    status, _, body = client.request("/api/auth/login", method="POST", payload={"password": TEST_PASSWORD})
+    # A correct passphrase without a valid second factor must still be rejected.
+    expect_status(
+        client,
+        "/api/auth/login",
+        401,
+        method="POST",
+        payload={"password": TEST_PASSWORD, "totpCode": "000000"},
+    )
+
+    status, _, body = client.request(
+        "/api/auth/login",
+        method="POST",
+        payload={"password": TEST_PASSWORD, "totpCode": server.generate_totp(totp_secret)},
+    )
     expect(status == 200, f"login failed: {body[:200]!r}")
     expect_status(client, f"/api/applications/{app['id']}", 200, method="DELETE")
     expect_json(client, "/api/applications", 200, [])

@@ -40,10 +40,10 @@ async function setupAuth(password) {
   });
 }
 
-async function loginAuth(password) {
+async function loginAuth(password, totpCode) {
   return api("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ password, totpCode }),
   });
 }
 

@@ -88,7 +88,7 @@ Then open:
 http://localhost:4173
 ```
 
-On first run, the app creates the local SQLite database and asks you to set a local passphrase. After that, use the passphrase to unlock the tracker in the browser.
+On first run, the app creates the local SQLite database and asks you to set a local passphrase. It then enrolls a mandatory second factor: add the one-time TOTP secret to an authenticator app (the secret is shown only once). After that, every unlock requires both the passphrase and a current 6-digit code.
 
 Stop the server with `Ctrl-C` in the terminal where it is running.
 
@@ -153,12 +153,16 @@ Current protections:
 
 - server binds to localhost
 - application data routes require local unlock after setup
-- passphrase is stored as a salted PBKDF2 hash, never plaintext
+- passphrase is stored as a salted, memory-hard scrypt hash, never plaintext
+- every unlock requires a second factor: a 6-digit TOTP code (RFC 6238)
+- every privileged read/write is recorded in a tamper-evident, hash-chained audit ledger (`GET /api/audit`)
 - sessions use an `HttpOnly` same-site cookie
 - state-changing API routes reject cross-origin writes
 - static file serving is allowlisted
 - private files under `data/` are not served as static files
 - request and upload sizes are limited
+
+All of this is implemented with the Python standard library; the project still has no third-party dependencies and no build step.
 
 Important limitations:
 
