@@ -13,6 +13,7 @@ Version labels are human-readable project milestones. GitHub releases or tags ar
 - Replaced PBKDF2 passphrase hashing with memory-hard scrypt (`N=2^15, r=8, p=1`) to raise the cost of offline brute force on GPUs/ASICs.
 - Added mandatory TOTP two-factor authentication (RFC 6238). The unlock screen now requires a 6-digit authenticator code in addition to the passphrase. The TOTP secret is enrolled once at setup.
 - Added a tamper-evident, hash-chained audit ledger recording every privileged read, write, delete, import, and upload, with chain verification exposed at `GET /api/audit`.
+- Added owner-only permissions for local runtime data: `data/`, `data/documents/`, SQLite files, sidecars, and uploaded documents now use private POSIX permissions where supported. In short: the `cat data/job-tracker.sqlite` concern is meow fixed for casual local reads; same-user disk access still belongs to FileVault, encrypted volumes, or future SQLCipher support. Series A diligence remains focused on "the disk."
 
 ### Changed
 

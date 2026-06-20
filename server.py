@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import os
 import sqlite3
 import base64
 import hashlib
@@ -28,6 +29,8 @@ ROOT = Path(__file__).parent.resolve()
 DATA_DIR = ROOT / "data"
 DB_PATH = DATA_DIR / "job-tracker.sqlite"
 DOCUMENTS_DIR = DATA_DIR / "documents"
+PRIVATE_DIR_MODE = 0o700
+PRIVATE_FILE_MODE = 0o600
 
 # JSON-backed application data tables exposed through the generic CRUD API.
 TABLES = ("applications", "events", "tasks")
@@ -101,11 +104,45 @@ class RequestError(Exception):
 
 
 def connect():
-    DATA_DIR.mkdir(exist_ok=True)
+    DATA_DIR.mkdir(mode=PRIVATE_DIR_MODE, exist_ok=True)
+    harden_path_permissions(DATA_DIR, PRIVATE_DIR_MODE)
     connection = sqlite3.connect(DB_PATH)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    harden_path_permissions(DB_PATH, PRIVATE_FILE_MODE)
     return connection
+
+
+def harden_path_permissions(path, mode):
+    if os.name != "posix":
+        return
+    try:
+        path.chmod(mode)
+    except OSError:
+        # Permission hardening is best-effort: never strand the local app because
+        # a filesystem does not support chmod or a sidecar file disappeared.
+        pass
+
+
+def harden_private_storage_permissions():
+    DATA_DIR.mkdir(mode=PRIVATE_DIR_MODE, exist_ok=True)
+    DOCUMENTS_DIR.mkdir(mode=PRIVATE_DIR_MODE, exist_ok=True)
+    harden_path_permissions(DATA_DIR, PRIVATE_DIR_MODE)
+    harden_path_permissions(DOCUMENTS_DIR, PRIVATE_DIR_MODE)
+
+    sqlite_paths = [
+        DB_PATH,
+        Path(f"{DB_PATH}-journal"),
+        Path(f"{DB_PATH}-shm"),
+        Path(f"{DB_PATH}-wal"),
+    ]
+    for path in sqlite_paths:
+        if path.exists():
+            harden_path_permissions(path, PRIVATE_FILE_MODE)
+
+    if DOCUMENTS_DIR.exists():
+        for path in DOCUMENTS_DIR.rglob("*"):
+            harden_path_permissions(path, PRIVATE_DIR_MODE if path.is_dir() else PRIVATE_FILE_MODE)
 
 
 def init_db():
@@ -192,6 +229,7 @@ def init_db():
         # auth_users row, so add them explicitly when absent.
         ensure_column(db, "auth_users", "kdf_params", "TEXT NOT NULL DEFAULT '{}'")
         ensure_column(db, "auth_users", "totp_secret", "TEXT NOT NULL DEFAULT ''")
+    harden_private_storage_permissions()
 
 
 def ensure_column(db, table, column, declaration):
@@ -986,10 +1024,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(self, 413, {"error": "Uploaded file is too large"})
 
             DOCUMENTS_DIR.mkdir(exist_ok=True)
+            harden_path_permissions(DOCUMENTS_DIR, PRIVATE_DIR_MODE)
             file_id = str(uuid.uuid4())
             stored_name = f"{file_id}-{safe_filename(payload['name'])}"
             stored_path = DOCUMENTS_DIR / stored_name
             stored_path.write_bytes(file_bytes)
+            harden_path_permissions(stored_path, PRIVATE_FILE_MODE)
             created_at = datetime.now(timezone.utc).isoformat()
 
             with connect() as db:
