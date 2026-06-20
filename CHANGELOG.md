@@ -6,6 +6,19 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-06-20
+
+### Security
+
+- Replaced PBKDF2 passphrase hashing with memory-hard scrypt (`N=2^15, r=8, p=1`) to raise the cost of offline brute force on GPUs/ASICs.
+- Added mandatory TOTP two-factor authentication (RFC 6238). The unlock screen now requires a 6-digit authenticator code in addition to the passphrase. The TOTP secret is enrolled once at setup.
+- Added a tamper-evident, hash-chained audit ledger recording every privileged read, write, delete, import, and upload, with chain verification exposed at `GET /api/audit`.
+
+### Changed
+
+- The unlock screen now collects a 6-digit authentication code; first-run setup shows a one-time 2FA enrollment step.
+- All new controls use the Python standard library only, preserving the project's zero-dependency, no-build posture.
+
 ## 2026-06-18
 
 ### Added

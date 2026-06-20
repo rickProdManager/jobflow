@@ -12,13 +12,34 @@ Current protections include:
 
 - localhost-only server binding
 - local unlock passphrase for browser/API access
-- salted PBKDF2 password hashing
+- salted, memory-hard **scrypt** password hashing (≈256 MiB cost per guess)
+- **mandatory TOTP two-factor authentication** (RFC 6238) on every unlock
+- **tamper-evident, hash-chained audit ledger** of every privileged read and write
 - server-side session records with `HttpOnly` same-site cookies
 - same-origin checks for state-changing requests
 - static file allowlisting
 - blocked static access to private runtime data under `data/`
 - JSON request size limits
 - file upload size limits
+
+## Zero-Trust Controls
+
+This build adopts a defense-in-depth, zero-trust posture for the local
+browser/API layer:
+
+- **Memory-hard credentials.** The passphrase is derived with scrypt
+  (`N=2^15, r=8, p=1`), making offline brute force materially more expensive on
+  GPUs and ASICs than the previous compute-only PBKDF2.
+- **Possession factor.** Knowledge of the passphrase is no longer sufficient.
+  Every unlock additionally requires a current six-digit code from an enrolled
+  authenticator app. The TOTP secret is shown exactly once, at enrollment.
+- **Tamper-evident telemetry.** Every authenticated read, write, delete,
+  import, and upload is appended to a SHA-256 hash-chained ledger. The chain can
+  be verified at any time via `GET /api/audit`; altering or deleting any entry
+  breaks the chain and is detected.
+
+All of the above is implemented with the Python standard library only, so the
+project retains its zero-dependency posture.
 
 Important limitations:
 

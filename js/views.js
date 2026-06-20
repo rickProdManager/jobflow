@@ -159,8 +159,25 @@ function renderAuthGate(auth = state.auth, message = "") {
             Confirm passphrase
             <input id="authPasswordConfirm" type="password" minlength="${PASSWORD_MIN_LENGTH}" autocomplete="new-password" required />
           </label>
-        ` : ""}
-        <p class="auth-hint">Use at least ${PASSWORD_MIN_LENGTH} characters. A memorable passphrase is perfect here.</p>
+        ` : `
+          <label>
+            Authentication code
+            <input
+              id="authTotp"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              placeholder="6-digit code"
+            />
+          </label>
+        `}
+        <p class="auth-hint">
+          ${isSetup
+            ? `Use at least ${PASSWORD_MIN_LENGTH} characters. A memorable passphrase is perfect here.`
+            : "Enter your passphrase and the 6-digit code from your authenticator app."}
+        </p>
         <p id="authError" class="auth-error" ${message ? "" : "hidden"}>${escapeHtml(message)}</p>
         <button class="primary-button" type="submit">${isSetup ? "Set passphrase" : "Unlock"}</button>
       </form>
@@ -193,12 +210,66 @@ async function submitAuthForm(isSetup) {
   }
 
   try {
-    state.auth = isSetup ? await setupAuth(password) : await loginAuth(password);
+    if (isSetup) {
+      const result = await setupAuth(password);
+      state.auth = result;
+      // First-run two-factor enrollment must happen before the tracker loads.
+      if (result?.twoFactor) {
+        renderTwoFactorEnrollment(result.twoFactor);
+        return;
+      }
+      await startAuthenticatedApp();
+      return;
+    }
+
+    const totpCode = (document.getElementById("authTotp").value || "").trim();
+    const result = await loginAuth(password, totpCode);
+    state.auth = result;
+    // Operators upgrading from a pre-2FA build are enrolled on first unlock and
+    // get the one-time enrollment screen instead of going straight in.
+    if (result?.twoFactor) {
+      renderTwoFactorEnrollment(result.twoFactor);
+      return;
+    }
     await startAuthenticatedApp();
   } catch (authError) {
     error.textContent = authError.message || "Could not unlock tracker.";
     error.hidden = false;
   }
+}
+
+function renderTwoFactorEnrollment(twoFactor) {
+  const authView = document.getElementById("authView");
+  document.body.classList.add("tracker-locked");
+  document.getElementById("appShell").hidden = true;
+  authView.hidden = false;
+  authView.innerHTML = `
+    <div class="auth-card">
+      <p class="eyebrow">Zero-trust enrollment</p>
+      <h1>Enroll your authenticator</h1>
+      <p class="auth-copy">
+        Two-factor authentication is required to unlock this tracker. Add the
+        secret below to an authenticator app (1Password, Authy, Google
+        Authenticator, etc.). This key is shown only once.
+      </p>
+      <label class="auth-2fa-field">
+        Manual setup key
+        <code class="auth-2fa-key">${escapeHtml(twoFactor.manualKey || "")}</code>
+      </label>
+      <label class="auth-2fa-field">
+        otpauth URI
+        <code class="auth-2fa-key">${escapeHtml(twoFactor.provisioningUri || "")}</code>
+      </label>
+      <p class="auth-hint">
+        Future unlocks will require both your passphrase and a current
+        ${twoFactor.digits || 6}-digit code.
+      </p>
+      <button class="primary-button" id="twoFactorContinue" type="button">I've saved it — continue</button>
+    </div>
+  `;
+  document.getElementById("twoFactorContinue").addEventListener("click", async () => {
+    await startAuthenticatedApp();
+  });
 }
 
 

@@ -189,9 +189,18 @@ Local unlock uses these endpoints:
 | `POST /api/auth/login` | Unlocks the app |
 | `POST /api/auth/logout` | Deletes the current session and clears the browser cookie |
 
+`POST /api/auth/setup` provisions a TOTP secret and returns it once, in a
+`twoFactor` object (`secret`, `manualKey`, `provisioningUri`), so the browser can
+prompt the operator to enroll an authenticator. `POST /api/auth/login` requires
+both `password` and a current `totpCode`; either one missing or invalid fails the
+unlock.
+
 The browser receives an `HttpOnly` session cookie after setup or login. After that, `credentials: "same-origin"` makes `fetch()` include the cookie automatically on future local API calls.
 
 All application data routes require authentication once the local passphrase has been configured.
+
+`GET /api/audit` returns the tamper-evident audit ledger and a `chainIntact`
+flag. It requires authentication like any other data route.
 
 ### Request Guards
 
@@ -406,6 +415,8 @@ CREATE TABLE auth_users (
   password_hash TEXT NOT NULL,
   password_salt TEXT NOT NULL,
   iterations INTEGER NOT NULL,
+  kdf_params TEXT NOT NULL DEFAULT '{}',
+  totp_secret TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -414,13 +425,46 @@ CREATE TABLE auth_users (
 Columns:
 
 - `id`: fixed to `1`; this is a single-user local app.
-- `password_hash`: PBKDF2-HMAC-SHA256 password hash, Base64 encoded.
+- `password_hash`: memory-hard scrypt password hash, Base64 encoded.
 - `password_salt`: per-password random salt, Base64 encoded.
-- `iterations`: PBKDF2 iteration count. Currently `600000`.
+- `iterations`: retained for backward compatibility; now holds the scrypt cost parameter `N`.
+- `kdf_params`: JSON describing the key-derivation function and its parameters, e.g. `{"algo":"scrypt","n":32768,"r":8,"p":1,"dklen":64}`.
+- `totp_secret`: Base32 TOTP shared secret for the mandatory second factor. Disclosed to the browser exactly once, at enrollment.
 - `created_at`: auth setup timestamp.
 - `updated_at`: last auth update timestamp.
 
-The passphrase itself is never stored.
+The passphrase itself is never stored. Databases created before zero-trust hardening are migrated in place: `init_db()` adds the `kdf_params` and `totp_secret` columns when they are absent.
+
+### `audit_log`
+
+Append-only, hash-chained ledger of every privileged operation. Each entry's
+`entry_hash` is `SHA-256(ts | actor | action | detail | prev_hash)`, so any
+later edit or deletion of a row breaks the chain and is detectable.
+
+```sql
+CREATE TABLE audit_log (
+  seq INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT NOT NULL,
+  prev_hash TEXT NOT NULL,
+  entry_hash TEXT NOT NULL
+);
+```
+
+Columns:
+
+- `seq`: monotonic sequence number / chain order.
+- `ts`: ISO-8601 UTC timestamp of the entry.
+- `actor`: the local operator (single-user app).
+- `action`: operation code, e.g. `auth.login`, `data.read`, `data.write`, `data.delete`, `data.import`, `file.upload`.
+- `detail`: human-readable context (table, record id, byte count, etc.).
+- `prev_hash`: `entry_hash` of the previous entry, or the all-zero genesis digest for the first row.
+- `entry_hash`: SHA-256 digest binding this entry to the chain.
+
+The chain is verified and returned by `GET /api/audit`, which responds with the
+ordered entries plus a `chainIntact` boolean.
 
 ### `auth_sessions`
 
