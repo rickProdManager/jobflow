@@ -179,7 +179,7 @@ function renderApplicationDurationBreakdown(applications) {
     .filter(matchesTimelineStatusFilter)
     .map(applicationTimelineGraphRow)
     .filter((row) => row.points.length)
-    .sort((a, b) => b.submittedDate.localeCompare(a.submittedDate));
+    .sort((a, b) => compareApplicationsForList(a.app, b.app));
   const maxPage = Math.max(0, Math.ceil(allRows.length / TIMELINE_PAGE_SIZE) - 1);
   if (state.timelinePage > maxPage) state.timelinePage = maxPage;
 
@@ -218,7 +218,7 @@ function renderApplicationDurationBreakdown(applications) {
               <span>Today ${formatShortDate(timelineEnd)}</span>
             </div>
             <div class="timeline-track" aria-label="${escapeHtml(`${row.app.jobTitle} timeline`)}">
-              ${row.points.map((point, index) => renderTimelineMarker(point, timelineStart, timelineEnd, index)).join("")}
+              ${layoutTimelineMarkers(row.points, timelineStart, timelineEnd).map(renderTimelineMarker).join("")}
             </div>
           </div>
         </div>
@@ -307,7 +307,7 @@ function applicationTimelineGraphPoints(app) {
     });
   }
 
-  visibleEvents(eventsFor(app.id))
+  visibleTimelineEventsFor(app.id)
     .filter((event) => event.type !== "application_submitted")
     .forEach((event) => {
       const date = dateOnly(event.occurredAt);
@@ -319,31 +319,62 @@ function applicationTimelineGraphPoints(app) {
       });
     });
 
-  tasksFor(app.id).forEach((task) => {
-    const isComplete = Boolean(task.completedAt);
-    const date = dateOnly(isComplete ? task.completedAt : task.dueAt);
-    points.push({
-      label: isComplete ? "Action done" : "Next action",
-      date,
-      kind: isComplete ? "completed-action" : "next-action",
-      sortKey: `${date}T02:00:00.000Z-${task.completedAt || task.dueAt || ""}`,
+  const appIsClosed = isClosed(applicationStage(app));
+  tasksFor(app.id)
+    .filter((task) => shouldShowTimelineTask(task, appIsClosed))
+    .forEach((task) => {
+      const isComplete = Boolean(task.completedAt);
+      const date = dateOnly(isComplete ? task.completedAt : task.dueAt);
+      points.push({
+        label: isComplete ? "Action done" : "Next action",
+        date,
+        kind: isComplete ? "completed-action" : "next-action",
+        sortKey: `${date}T02:00:00.000Z-${task.completedAt || task.dueAt || ""}`,
+      });
     });
-  });
 
   return points
     .filter((point) => point.date)
     .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
 }
 
-function renderTimelineMarker(point, startDate, endDate, index = 0) {
+function shouldShowTimelineTask(task, appIsClosed) {
+  if (task.completedAt) return true;
+  if (appIsClosed) return false;
+  return dateOnly(task.dueAt) >= localDateInput();
+}
+
+function localDateInput(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function layoutTimelineMarkers(points, startDate, endDate) {
   const totalDays = Math.max(1, daysBetween(startDate, endDate));
-  const left = Math.min(100, Math.max(0, (daysBetween(startDate, point.date) / totalDays) * 100));
+  const minLabelGap = 24;
+  const laneCount = 4;
+  const lastLeftByLane = Array(laneCount).fill(-Infinity);
+
+  return points.map((point) => {
+    const left = Math.min(100, Math.max(0, (daysBetween(startDate, point.date) / totalDays) * 100));
+    let lane = lastLeftByLane.findIndex((lastLeft) => left - lastLeft >= minLabelGap);
+    if (lane === -1) {
+      lane = lastLeftByLane.indexOf(Math.min(...lastLeftByLane));
+    }
+    lastLeftByLane[lane] = left;
+    return { point, left, lane };
+  });
+}
+
+function renderTimelineMarker(marker) {
+  const { point, left, lane } = marker;
   const edgeClass = left < 12 ? "edge-left" : left > 88 ? "edge-right" : "";
-  const labelPosition = index % 2 === 0 ? "label-top" : "label-bottom";
-  const label = `${truncateLabel(markerDisplayLabel(point.label), 16)} - ${formatShortDate(point.date)}`;
+  const label = `${markerDisplayLabel(point.label)} - ${formatShortDate(point.date)}`;
   return `
     <span
-      class="timeline-marker-wrap ${labelPosition} ${edgeClass}"
+      class="timeline-marker-wrap lane-${lane} ${edgeClass}"
       style="left: ${left}%"
       title="${escapeHtml(`${point.label}: ${formatDate(point.date)}`)}"
     >
@@ -351,6 +382,11 @@ function renderTimelineMarker(point, startDate, endDate, index = 0) {
       <span class="timeline-marker marker-${point.kind}"></span>
     </span>
   `;
+}
+
+function visibleTimelineEventsFor(applicationId) {
+  return visibleEvents(eventsFor(applicationId))
+    .filter((event) => event.type !== "next_action_unavailable");
 }
 
 function markerDisplayLabel(label) {

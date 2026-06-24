@@ -6,6 +6,13 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-06-24
+
+### Changed
+
+- Improved Analytics application timelines so rows sort by meaningful application activity, dense activity labels use spaced readable lanes, and labels wrap instead of truncating.
+- Hid non-action timeline noise, including follow-up unavailable markers, closed-application future next actions, and past-due open next actions.
+
 ## 2026-06-20
 
 ### Security
