@@ -1,6 +1,6 @@
 // URL and browser history synchronization.
 
-const views = ["dashboard", "applications", "reminders", "analytics", "settings"];
+const views = ["dashboard", "applications", "reminders", "analytics", "flow-map", "settings"];
 
 function bindHistoryNavigation() {
   window.addEventListener("popstate", () => {
@@ -60,13 +60,15 @@ function appUrlFromState() {
     }
   }
 
-  if (state.activeView === "analytics") {
+  if (["analytics", "flow-map"].includes(state.activeView)) {
     if (state.analyticsSegment !== "stage") params.set("segment", state.analyticsSegment);
     if (state.analyticsFrom) params.set("from", state.analyticsFrom);
     if (state.analyticsTo) params.set("to", state.analyticsTo);
     if (state.analyticsChart !== "flow") params.set("chart", state.analyticsChart);
-    if (state.timelineStatusFilter !== "all") params.set("timelineStatus", state.timelineStatusFilter);
-    if (state.timelinePage > 0) params.set("timelinePage", String(state.timelinePage));
+    if (state.activeView === "analytics") {
+      if (state.timelineStatusFilter !== "all") params.set("timelineStatus", state.timelineStatusFilter);
+      if (state.timelinePage > 0) params.set("timelinePage", String(state.timelinePage));
+    }
   }
 
   const query = params.toString();

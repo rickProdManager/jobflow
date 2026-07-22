@@ -297,6 +297,8 @@ Columns:
 - `occurred_at`: copied from `data.occurredAt`.
 - `created_at`: copied from `data.createdAt`.
 
+For an `interview_scheduled` event, `data.scheduledFor` records the planned interview date separately from `occurredAt`, which is the date the interview was scheduled.
+
 Common event types:
 
 - `application_submitted`
@@ -307,6 +309,7 @@ Common event types:
 - `interview_completed`
 - `thank_you_sent`
 - `offer_received`
+- `offer_accepted`
 - `rejected`
 - `abandoned_no_response`
 - `next_action_completed`

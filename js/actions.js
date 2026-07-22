@@ -14,6 +14,7 @@ function bindEvents() {
   document.getElementById("lockButton").addEventListener("click", lockTracker);
   document.getElementById("applicationForm").addEventListener("submit", saveApplication);
   document.getElementById("activityForm").addEventListener("submit", saveActivity);
+  document.getElementById("activityType").addEventListener("change", updateActivityTypeFields);
   document.getElementById("taskForm").addEventListener("submit", saveTask);
   document.getElementById("taskCompletionForm").addEventListener("submit", saveTaskCompletion);
   document.getElementById("applicationPath").addEventListener("change", updateConditionalPathFields);
@@ -134,8 +135,20 @@ function openActivityDialog(applicationId, activity = null) {
   document.getElementById("activityApplicationId").value = applicationId;
   document.getElementById("activityType").value = activity?.type || "application_submitted";
   document.getElementById("occurredAt").value = activity?.occurredAt || toDateInput(new Date());
+  document.getElementById("interviewScheduledFor").value = activity?.scheduledFor || "";
   document.getElementById("activityDescription").value = activity?.description || "";
+  updateActivityTypeFields();
   document.getElementById("activityDialog").showModal();
+}
+
+function updateActivityTypeFields() {
+  const isInterviewScheduled = document.getElementById("activityType").value === "interview_scheduled";
+  const scheduledForField = document.getElementById("interviewScheduledForField");
+  const scheduledForInput = document.getElementById("interviewScheduledFor");
+
+  scheduledForField.hidden = !isInterviewScheduled;
+  scheduledForInput.required = isInterviewScheduled;
+  document.getElementById("occurredAtLabel").textContent = isInterviewScheduled ? "Scheduled on" : "Date done";
 }
 
 function openTaskDialog(applicationId) {
@@ -331,10 +344,13 @@ async function saveActivity(event) {
   const applicationId = document.getElementById("activityApplicationId").value;
   const type = document.getElementById("activityType").value;
   const occurredAt = document.getElementById("occurredAt").value;
+  const scheduledFor = type === "interview_scheduled" ? document.getElementById("interviewScheduledFor").value : "";
   const description = document.getElementById("activityDescription").value.trim();
   const now = new Date().toISOString();
 
-  const duplicate = findDuplicateActivity({ id, applicationId, type, occurredAt });
+  const duplicate = allowsMultipleActivities(type)
+    ? null
+    : findDuplicateActivity({ id, applicationId, type, occurredAt });
   if (duplicate) {
     const duplicateLabel = eventDisplayLabel(duplicate);
     const acknowledged = confirm(
@@ -350,6 +366,7 @@ async function saveActivity(event) {
     title: eventLabels[type],
     description,
     occurredAt,
+    scheduledFor,
     createdAt: existing?.createdAt || now,
   };
 
@@ -380,7 +397,11 @@ function findDuplicateActivity(candidate) {
 }
 
 function isSingleInstanceActivity(type) {
-  return ["application_submitted", "offer_received", "rejected", "abandoned_no_response"].includes(type);
+  return ["application_submitted", "offer_received", "offer_accepted", "rejected", "abandoned_no_response"].includes(type);
+}
+
+function allowsMultipleActivities(type) {
+  return ["interview_scheduled", "interview_completed"].includes(type);
 }
 
 async function saveTask(event) {

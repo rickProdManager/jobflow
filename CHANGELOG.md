@@ -6,6 +6,23 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-07-22
+
+### Changed
+
+- Relicensed Job Tracker under the MIT License, allowing use, modification, distribution, sublicensing, and commercial use under the license terms.
+- Kept the Applications search field focused while filtering, so it no longer requires a click after each character.
+- Expanded the Analytics Flow chart from a path-to-outcome summary into a recorded lifecycle view, including interview scheduled, interview completed, offer received, and accepted/rejected/abandoned outcomes.
+- Added the `Offer accepted` activity and `Accepted` stage so accepted offers are represented in applications, timelines, and analytics.
+- Split interview scheduled from interview completed in analytics so scheduling an interview no longer inflates the Interviewed total.
+- Let Flow use its full panel width while retaining the original Analytics pane layout, and allow any number of interview-scheduled or interview-completed activities for an application.
+- Show each recorded interview in Flow as a numbered progression step, rather than folding multiple interview rounds into a single aggregate node.
+- Reworked Flow into an application-route Sankey: distinct paths branch from Submitted, interview rounds are numbered, and hover details identify the applications represented by each band.
+- Use compact route rows in Application timelines, keep the embedded Sankey compact, and provide a focused detailed-map view for exploring the full Flow without other analytics panes.
+- Show a compact count in each Sankey node, increase spacing in the detailed map, and show event dates below Application timeline route bubbles.
+- Separate the date an interview is scheduled from its planned date and use the planned date in Application timelines.
+- Reserve visible whitespace between Sankey ribbons at every node so separate routes no longer visually merge.
+
 ## 2026-06-24
 
 ### Changed

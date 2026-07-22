@@ -52,7 +52,10 @@ function renderAnalytics() {
     </div>
     <div class="layout-grid analytics-grid">
       <div class="panel">
-        <h3>${analyticsChartTitle()}</h3>
+        <div class="panel-heading">
+          <h3>${analyticsChartTitle()}</h3>
+          ${state.analyticsChart === "flow" ? `<button type="button" class="mini-button" data-open-flow-map>Open detailed map</button>` : ""}
+        </div>
         <div class="chart">${renderSelectedChart(segmentCounts, apps)}</div>
       </div>
       <div class="panel">
@@ -68,8 +71,10 @@ function renderAnalytics() {
         <h3>Outcomes</h3>
         <div class="stats-grid">
           ${statCard(conversion.applied, "Submitted")}
+          ${statCard(conversion.interviewScheduled, "Interview scheduled")}
           ${statCard(conversion.interviewed, "Interviewed")}
           ${statCard(conversion.offers, "Offers")}
+          ${statCard(conversion.accepted, "Accepted")}
           ${statCard(conversion.rejected, "Rejected")}
           ${statCard(conversion.abandoned, "Abandoned")}
           ${statCard(conversion.withdrawn, "Withdrawn")}
@@ -110,6 +115,36 @@ function renderAnalytics() {
   `;
 
   bindAnalyticsControls();
+}
+
+function renderFlowMap() {
+  const container = document.getElementById("flow-mapView");
+  if (state.activeView !== "flow-map") {
+    container.innerHTML = "";
+    return;
+  }
+
+  const applications = analyticsApplications();
+  container.innerHTML = `
+    <div class="flow-map-page">
+      <div class="page-header flow-map-header">
+        <div>
+          <p class="eyebrow">Application routes</p>
+          <h2>Detailed flow map</h2>
+        </div>
+        <button type="button" class="mini-button" data-close-flow-map>Back to Analytics</button>
+      </div>
+      <div class="flow-map-canvas">
+        ${renderFlowChart(applications, { detailed: true })}
+      </div>
+    </div>
+  `;
+
+  document.querySelector("[data-close-flow-map]").addEventListener("click", () => {
+    state.activeView = "analytics";
+    pushHistoryState();
+    render();
+  });
 }
 
 function renderBars(counts, max) {
@@ -177,8 +212,7 @@ function renderSalaryAnalytics(salary) {
 function renderApplicationDurationBreakdown(applications) {
   const allRows = applications
     .filter(matchesTimelineStatusFilter)
-    .map(applicationTimelineGraphRow)
-    .filter((row) => row.points.length)
+    .map((app) => ({ app, steps: applicationFlowRoute(app) }))
     .sort((a, b) => compareApplicationsForList(a.app, b.app));
   const maxPage = Math.max(0, Math.ceil(allRows.length / TIMELINE_PAGE_SIZE) - 1);
   if (state.timelinePage > maxPage) state.timelinePage = maxPage;
@@ -186,47 +220,49 @@ function renderApplicationDurationBreakdown(applications) {
   const pageStart = state.timelinePage * TIMELINE_PAGE_SIZE;
   const rows = allRows.slice(pageStart, pageStart + TIMELINE_PAGE_SIZE);
 
-  const hasRows = Boolean(rows.length);
-  const today = toDateInput(new Date());
-
   return `
     ${renderTimelineStatusFilter(allRows.length)}
-    ${hasRows ? `<div class="timeline-graph-list">
-      ${rows.map((row) => {
-        const timelineStart = row.submittedDate || today;
-        const timelineEnd = today;
-        return `
-        <div
-          class="timeline-graph-row timeline-row-link"
-          role="button"
-          tabindex="0"
-          data-timeline-application="${escapeHtml(row.app.id)}"
-          aria-label="${escapeHtml(`Open ${row.app.companyName} ${row.app.jobTitle}`)}"
-        >
-          <div class="timeline-row-summary">
-            <h3>${escapeHtml(row.app.jobTitle)}</h3>
-            <p class="timeline-row-meta">
-              <span class="employer-badge">${escapeHtml(row.app.companyName)}</span>
-              <span class="timeline-status-pill ${stageClass(applicationStage(row.app))}">${escapeHtml(flowOutcomeLabel(applicationStage(row.app)))}</span>
-            </p>
-            <p class="timeline-row-date">Submitted ${formatDate(row.submittedDate)}</p>
-            ${row.nextActionDate ? `<p class="timeline-row-date">Next action ${formatDate(row.nextActionDate)}</p>` : ""}
-          </div>
-          <div class="timeline-graph">
-            <div class="timeline-axis">
-              <span>Submitted ${formatShortDate(timelineStart)}</span>
-              <span>Today ${formatShortDate(timelineEnd)}</span>
-            </div>
-            <div class="timeline-track" aria-label="${escapeHtml(`${row.app.jobTitle} timeline`)}">
-              ${layoutTimelineMarkers(row.points, timelineStart, timelineEnd).map(renderTimelineMarker).join("")}
-            </div>
-          </div>
-        </div>
-      `;
-      }).join("")}
-    </div>` : `<p class="empty">No dated application timeline data for this status yet.</p>`}
+    ${rows.length ? `<div class="timeline-route-list">
+      ${rows.map(renderTimelineRouteRow).join("")}
+    </div>` : `<p class="empty">No applications match this status yet.</p>`}
     ${renderTimelinePagination(allRows.length, pageStart, rows.length)}
   `;
+}
+
+function renderTimelineRouteRow(row) {
+  const stage = applicationStage(row.app);
+  return `
+    <article
+      class="timeline-route-row timeline-row-link"
+      role="button"
+      tabindex="0"
+      data-timeline-application="${escapeHtml(row.app.id)}"
+      aria-label="${escapeHtml(`Open ${row.app.companyName} ${row.app.jobTitle}`)}"
+    >
+      <div class="timeline-row-summary">
+        <h3>${escapeHtml(row.app.jobTitle)}</h3>
+        <p class="timeline-row-meta">
+          <span class="employer-badge">${escapeHtml(row.app.companyName)}</span>
+          <span class="timeline-status-pill ${stageClass(stage)}">${escapeHtml(flowOutcomeLabel(stage))}</span>
+        </p>
+      </div>
+      <div class="timeline-route-scroll" aria-label="${escapeHtml(`${row.app.jobTitle} application path`)}">
+        <div class="timeline-route-track">
+          ${row.steps.map((step, index) => `
+            ${index ? `<span class="timeline-route-arrow" aria-hidden="true">→</span>` : ""}
+            <span class="timeline-route-step-wrap">
+              <span class="timeline-route-step timeline-route-step-${timelineRouteStepKind(step)}">${escapeHtml(step.label)}</span>
+              ${step.date ? `<span class="timeline-route-step-date">${escapeHtml(formatShortDate(step.date))}</span>` : ""}
+            </span>
+          `).join("")}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function timelineRouteStepKind(step) {
+  return step.phase === "source" ? "path" : step.phase;
 }
 
 function renderTimelinePagination(total, pageStart, visibleCount) {
@@ -282,137 +318,6 @@ function matchesTimelineStatusFilter(app) {
   return true;
 }
 
-function applicationTimelineGraphRow(app) {
-  const points = applicationTimelineGraphPoints(app);
-  const submittedPoint = points.find((point) => point.kind === "submitted") || points[0];
-  const nextActionPoint = points.find((point) => point.kind === "next-action");
-
-  return {
-    app,
-    points,
-    submittedDate: submittedPoint?.date || dateOnly(app.createdAt),
-    nextActionDate: nextActionPoint?.date || "",
-  };
-}
-
-function applicationTimelineGraphPoints(app) {
-  const points = [];
-  const submittedDate = firstEventDate(app.id, "application_submitted") || dateOnly(app.createdAt);
-  if (submittedDate) {
-    points.push({
-      label: "Submitted",
-      date: submittedDate,
-      kind: "submitted",
-      sortKey: `${submittedDate}T00:00:00.000Z`,
-    });
-  }
-
-  visibleTimelineEventsFor(app.id)
-    .filter((event) => event.type !== "application_submitted")
-    .forEach((event) => {
-      const date = dateOnly(event.occurredAt);
-      points.push({
-        label: shortTimelineLabel(eventDisplayLabel(event)),
-        date,
-        kind: timelineKindForEvent(event.type),
-        sortKey: `${date}T01:00:00.000Z-${event.createdAt || ""}`,
-      });
-    });
-
-  const appIsClosed = isClosed(applicationStage(app));
-  tasksFor(app.id)
-    .filter((task) => shouldShowTimelineTask(task, appIsClosed))
-    .forEach((task) => {
-      const isComplete = Boolean(task.completedAt);
-      const date = dateOnly(isComplete ? task.completedAt : task.dueAt);
-      points.push({
-        label: isComplete ? "Action done" : "Next action",
-        date,
-        kind: isComplete ? "completed-action" : "next-action",
-        sortKey: `${date}T02:00:00.000Z-${task.completedAt || task.dueAt || ""}`,
-      });
-    });
-
-  return points
-    .filter((point) => point.date)
-    .sort((a, b) => a.sortKey.localeCompare(b.sortKey));
-}
-
-function shouldShowTimelineTask(task, appIsClosed) {
-  if (task.completedAt) return true;
-  if (appIsClosed) return false;
-  return dateOnly(task.dueAt) >= localDateInput();
-}
-
-function localDateInput(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-function layoutTimelineMarkers(points, startDate, endDate) {
-  const totalDays = Math.max(1, daysBetween(startDate, endDate));
-  const minLabelGap = 24;
-  const laneCount = 4;
-  const lastLeftByLane = Array(laneCount).fill(-Infinity);
-
-  return points.map((point) => {
-    const left = Math.min(100, Math.max(0, (daysBetween(startDate, point.date) / totalDays) * 100));
-    let lane = lastLeftByLane.findIndex((lastLeft) => left - lastLeft >= minLabelGap);
-    if (lane === -1) {
-      lane = lastLeftByLane.indexOf(Math.min(...lastLeftByLane));
-    }
-    lastLeftByLane[lane] = left;
-    return { point, left, lane };
-  });
-}
-
-function renderTimelineMarker(marker) {
-  const { point, left, lane } = marker;
-  const edgeClass = left < 12 ? "edge-left" : left > 88 ? "edge-right" : "";
-  const label = `${markerDisplayLabel(point.label)} - ${formatShortDate(point.date)}`;
-  return `
-    <span
-      class="timeline-marker-wrap lane-${lane} ${edgeClass}"
-      style="left: ${left}%"
-      title="${escapeHtml(`${point.label}: ${formatDate(point.date)}`)}"
-    >
-      <span class="timeline-marker-label">${escapeHtml(label)}</span>
-      <span class="timeline-marker marker-${point.kind}"></span>
-    </span>
-  `;
-}
-
-function visibleTimelineEventsFor(applicationId) {
-  return visibleEvents(eventsFor(applicationId))
-    .filter((event) => event.type !== "next_action_unavailable");
-}
-
-function markerDisplayLabel(label) {
-  return String(label)
-    .replace("Next action", "Next")
-    .replace("Action done", "Done")
-    .replace("Interview scheduled", "Interview")
-    .replace("Interview completed", "Interview done")
-    .replace("Follow-up sent", "Follow-up")
-    .replace("Thank-you sent", "Thank-you");
-}
-
-function timelineKindForEvent(type) {
-  if (type.includes("interview")) return "interview";
-  if (["offer_received", "rejected", "abandoned_no_response"].includes(type)) return "outcome";
-  if (type.includes("follow_up") || type === "thank_you_sent") return "follow-up";
-  return "activity";
-}
-
-function shortTimelineLabel(label) {
-  return String(label)
-    .replace("Application ", "")
-    .replace("Recruiter ", "Recruiter ")
-    .replace("Abandoned - no response", "Abandoned");
-}
-
 function bindAnalyticsControls() {
   document.getElementById("analyticsSegment").addEventListener("change", (event) => {
     state.analyticsSegment = event.target.value;
@@ -435,6 +340,12 @@ function bindAnalyticsControls() {
     state.analyticsChart = event.target.value;
     replaceHistoryState();
     renderAnalytics();
+  });
+
+  document.querySelector("[data-open-flow-map]")?.addEventListener("click", () => {
+    state.activeView = "flow-map";
+    pushHistoryState();
+    render();
   });
 
   document.querySelectorAll("[data-timeline-filter]").forEach((button) => {
@@ -540,15 +451,19 @@ function analyticsChartTitle() {
 
 function conversionMetrics(applications, events) {
   const appIdsWithSubmittedEvents = new Set(events.filter((event) => event.type === "application_submitted").map((event) => event.applicationId));
-  const appIdsWithInterviewEvents = new Set(events.filter((event) => event.type.includes("interview")).map((event) => event.applicationId));
+  const appIdsWithScheduledInterviewEvents = new Set(events.filter((event) => event.type === "interview_scheduled").map((event) => event.applicationId));
+  const appIdsWithCompletedInterviewEvents = new Set(events.filter((event) => event.type === "interview_completed").map((event) => event.applicationId));
   const appIdsWithOfferEvents = new Set(events.filter((event) => event.type === "offer_received").map((event) => event.applicationId));
+  const appIdsWithAcceptedOfferEvents = new Set(events.filter((event) => event.type === "offer_accepted").map((event) => event.applicationId));
   const appIdsWithRejectedEvents = new Set(events.filter((event) => event.type === "rejected").map((event) => event.applicationId));
   const appIdsWithAbandonedEvents = new Set(events.filter((event) => event.type === "abandoned_no_response").map((event) => event.applicationId));
 
   return {
     applied: applications.filter((app) => applicationStage(app) === "Applied" || appIdsWithSubmittedEvents.has(app.id)).length,
-    interviewed: applications.filter((app) => ["Recruiter Screen", "Technical Screen", "Final Interview", "Offer"].includes(applicationStage(app)) || appIdsWithInterviewEvents.has(app.id)).length,
-    offers: applications.filter((app) => applicationStage(app) === "Offer" || appIdsWithOfferEvents.has(app.id)).length,
+    interviewScheduled: applications.filter((app) => appIdsWithScheduledInterviewEvents.has(app.id)).length,
+    interviewed: applications.filter((app) => ["Final Interview", "Offer", "Accepted"].includes(applicationStage(app)) || appIdsWithCompletedInterviewEvents.has(app.id)).length,
+    offers: applications.filter((app) => ["Offer", "Accepted"].includes(applicationStage(app)) || appIdsWithOfferEvents.has(app.id) || appIdsWithAcceptedOfferEvents.has(app.id)).length,
+    accepted: applications.filter((app) => applicationStage(app) === "Accepted" || appIdsWithAcceptedOfferEvents.has(app.id)).length,
     rejected: applications.filter((app) => applicationStage(app) === "Rejected" || appIdsWithRejectedEvents.has(app.id)).length,
     abandoned: applications.filter((app) => applicationStage(app) === "Abandoned" || appIdsWithAbandonedEvents.has(app.id)).length,
     withdrawn: applications.filter((app) => applicationStage(app) === "Withdrawn").length,
@@ -679,126 +594,370 @@ function renderDonutChart(counts) {
   `;
 }
 
-function renderFlowChart(applications) {
+function renderFlowChart(applications, options = {}) {
   if (!applications.length) return `<p class="empty">No application flow data yet.</p>`;
 
-  const total = applications.length;
-  const sourceEntries = sortedFlowEntries(applications.reduce((acc, app) => {
-    const label = applicationPathLabel(app);
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {}));
-  const outcomeEntries = sortedFlowEntries(applications.reduce((acc, app) => {
-    const label = flowOutcomeLabel(applicationStage(app));
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {}));
-
-  const width = 680;
-  const nodeHeight = 56;
-  const nodeGap = 18;
-  const sideNodeCount = Math.max(sourceEntries.length, outcomeEntries.length, 1);
-  const height = Math.max(240, sideNodeCount * nodeHeight + Math.max(0, sideNodeCount - 1) * nodeGap + 56);
-  const nodeWidth = 132;
-  const colors = ["#2f6f5e", "#315b8f", "#e7b84f", "#b95d54", "#65717d", "#6f5d8c"];
-  const sourceNodes = layoutFlowNodes(sourceEntries, 22, nodeWidth, height, nodeHeight, nodeGap);
-  const submittedNode = {
-    label: "Submitted",
-    value: total,
-    x: 322,
-    y: 28,
-    width: nodeWidth,
-    height: height - 56,
-  };
-  const outcomeNodes = layoutFlowNodes(outcomeEntries, 526, nodeWidth, height, nodeHeight, nodeGap);
-
-  let sourceTargetCursor = 0;
-  const sourceLinks = sourceNodes.map((node, index) => {
-    const targetY = submittedNode.y + ((sourceTargetCursor + node.value / 2) / total) * submittedNode.height;
-    sourceTargetCursor += node.value;
-    return renderFlowLink(
-      node.x + node.width,
-      node.y + node.height / 2,
-      submittedNode.x,
-      targetY,
-      node.value,
-      total,
-      colors[index % colors.length]
-    );
-  }).join("");
-
-  let outcomeSourceCursor = 0;
-  const outcomeLinks = outcomeNodes.map((node, index) => {
-    const sourceY = submittedNode.y + ((outcomeSourceCursor + node.value / 2) / total) * submittedNode.height;
-    outcomeSourceCursor += node.value;
-    return renderFlowLink(
-      submittedNode.x + submittedNode.width,
-      sourceY,
-      node.x,
-      node.y + node.height / 2,
-      node.value,
-      total,
-      colors[(index + sourceNodes.length) % colors.length]
-    );
-  }).join("");
+  const detailed = Boolean(options.detailed);
+  const flow = buildApplicationFlow(applications);
+  const columns = flowColumnsFor(flow.nodes);
+  const largestNodeValue = Math.max(1, ...flow.nodes.map((node) => node.value));
+  const linkUnit = detailed
+    ? Math.min(11, Math.max(0.5, 42 / largestNodeValue))
+    : Math.min(6, Math.max(0.35, 22 / largestNodeValue));
+  const baseNodeHeight = detailed ? 56 : 36;
+  const portGap = detailed ? 24 : 4;
+  const nodeWidth = detailed ? 160 : 104;
+  const columnGap = detailed ? 300 : 44;
+  const nodeGap = detailed ? 32 : 8;
+  const nodeHeights = flowNodeHeights(flow.nodes, flow.links, linkUnit, portGap, baseNodeHeight);
+  const tallestColumn = Math.max(...columns.map((column) => {
+    const entries = flow.nodes.filter((node) => node.column === column.id);
+    return flowColumnHeight(entries, nodeHeights, nodeGap, detailed);
+  }));
+  const chartWidth = Math.max(detailed ? 2500 : 620, 48 + columns.length * nodeWidth + Math.max(0, columns.length - 1) * columnGap);
+  const chartHeight = Math.max(detailed ? 500 : 176, 56 + tallestColumn);
+  const nodes = layoutFlowNodes(flow.nodes, columns, nodeWidth, nodeHeights, nodeGap, chartHeight, columnGap, detailed);
+  const links = layoutFlowLinks(nodes, flow.links, linkUnit, portGap);
 
   return `
     <div class="flow-wrapper">
-      <svg class="chart-svg flow-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Application flow chart">
-        ${sourceLinks}
-        ${outcomeLinks}
-        ${[...sourceNodes, submittedNode, ...outcomeNodes].map(renderFlowNode).join("")}
-      </svg>
-      <p class="flow-caption">Application path to submitted applications to current stage or outcome.</p>
+      <div class="flow-scroll">
+        <svg class="chart-svg flow-chart ${detailed ? "flow-chart-detailed" : ""}" viewBox="0 0 ${chartWidth} ${chartHeight}" style="--flow-width: ${chartWidth}px" role="img" aria-label="Application flow Sankey chart">
+          ${links.map(renderFlowLink).join("")}
+          ${nodes.map(renderFlowNode).join("")}
+        </svg>
+      </div>
+      <p class="flow-caption">Each band follows recorded application progress. Hover a band to see the applications it represents; interview stages are numbered, while completed interviews remain in Application timelines.</p>
     </div>
   `;
 }
 
-function sortedFlowEntries(counts) {
-  return Object.entries(counts).sort((a, b) => {
-    if (b[1] !== a[1]) return b[1] - a[1];
-    return a[0].localeCompare(b[0]);
+const FLOW_MILESTONES = {
+  in_progress: { id: "in_progress", label: "In progress", phase: "progress", order: 0 },
+  offer_received: { label: "Offer received", phase: "offer", order: 0 },
+  offer_accepted: { label: "Accepted", phase: "outcome", order: 0 },
+  rejected: { label: "Rejected", phase: "outcome", order: 1 },
+  abandoned: { label: "Abandoned", phase: "outcome", order: 2 },
+  withdrawn: { label: "Withdrawn", phase: "outcome", order: 3 },
+};
+
+function buildApplicationFlow(applications) {
+  const nodeById = new Map();
+  const linkById = new Map();
+
+  applications.forEach((app) => {
+    const route = applicationFlowRoute(app);
+    route.forEach((node) => nodeById.set(node.id, node));
+
+    route.slice(1).forEach((target, index) => {
+      const source = route[index];
+      const id = `${source.id}->${target.id}`;
+      const link = linkById.get(id) || {
+        id,
+        sourceId: source.id,
+        targetId: target.id,
+        value: 0,
+        applications: [],
+      };
+      link.value += 1;
+      link.applications.push(app);
+      linkById.set(id, link);
+    });
+  });
+
+  const links = [...linkById.values()];
+  const unpositionedNodes = [...nodeById.values()];
+  const maximumInterviewStep = Math.max(0, ...unpositionedNodes
+    .filter((node) => node.phase === "interview")
+    .map((node) => node.interviewRound));
+  const nodes = unpositionedNodes.map((node) => {
+    const incoming = links.filter((link) => link.targetId === node.id).reduce((sum, link) => sum + link.value, 0);
+    const outgoing = links.filter((link) => link.sourceId === node.id).reduce((sum, link) => sum + link.value, 0);
+    return {
+      ...node,
+      column: flowNodeColumn(node, maximumInterviewStep),
+      value: Math.max(incoming, outgoing),
+    };
+  });
+
+  return { nodes, links };
+}
+
+function applicationFlowRoute(app) {
+  const path = applicationPathLabel(app);
+  const events = visibleEvents(eventsFor(app.id));
+  const eventTypes = new Set(events.map((event) => event.type));
+  const submittedDate = firstFlowEventDate(events, ["application_submitted"]) || dateOnly(app.createdAt);
+  const route = [
+    { id: `source:${path}`, label: path, phase: "source", order: flowSourceOrder(path) },
+    { id: "submitted", label: "Submitted", phase: "submitted", date: submittedDate, order: 0 },
+  ];
+  const stage = applicationStage(app);
+  const outcome = latestFlowOutcome(app, eventTypes, stage);
+  const interviews = events
+    .filter((event) => event.type === "interview_scheduled")
+    .sort((a, b) => `${a.scheduledFor || a.occurredAt}-${a.createdAt || ""}-${a.id || ""}`.localeCompare(`${b.scheduledFor || b.occurredAt}-${b.createdAt || ""}-${b.id || ""}`));
+  const isDirectExit = Boolean(outcome) && !interviews.length;
+
+  if (!isDirectExit) route.push({ ...FLOW_MILESTONES.in_progress, date: progressFlowDate(events, submittedDate) });
+  interviews.forEach((event, index) => {
+    const round = index + 1;
+    route.push({
+      id: `interview:${round}:${app.id}`,
+      label: `Interview ${round}`,
+      detail: app.companyName,
+      phase: "interview",
+      date: dateOnly(event.scheduledFor || event.occurredAt),
+      interviewRound: round,
+      order: 0,
+    });
+  });
+  if (eventTypes.has("offer_received") || stage === "Offer") {
+    route.push({ id: "offer_received", ...FLOW_MILESTONES.offer_received, date: firstFlowEventDate(events, ["offer_received"]) || dateOnly(app.updatedAt) });
+  }
+  if (outcome) route.push({ id: outcome, ...FLOW_MILESTONES[outcome], date: latestFlowOutcomeDate(events, outcome) || dateOnly(app.updatedAt) });
+
+  return route;
+}
+
+function firstFlowEventDate(events, types) {
+  const firstEvent = events
+    .filter((event) => types.includes(event.type))
+    .sort((a, b) => `${a.occurredAt}-${a.createdAt || ""}`.localeCompare(`${b.occurredAt}-${b.createdAt || ""}`))[0];
+  return dateOnly(firstEvent?.occurredAt);
+}
+
+function progressFlowDate(events, fallbackDate) {
+  const progressTypes = [
+    "follow_up_sent",
+    "recruiter_replied",
+    "internal_contact_replied",
+    "thank_you_sent",
+    "interview_scheduled",
+  ];
+  return firstFlowEventDate(events, progressTypes) || fallbackDate;
+}
+
+function latestFlowOutcomeDate(events, outcome) {
+  const type = {
+    offer_accepted: "offer_accepted",
+    rejected: "rejected",
+    abandoned: "abandoned_no_response",
+  }[outcome];
+  if (!type) return "";
+
+  const matching = events
+    .filter((event) => event.type === type)
+    .sort((a, b) => `${b.occurredAt}-${b.createdAt || ""}`.localeCompare(`${a.occurredAt}-${a.createdAt || ""}`));
+  return dateOnly(matching[0]?.occurredAt);
+}
+
+function latestFlowOutcome(app, eventTypes, stage) {
+  const outcomeByEvent = {
+    offer_accepted: "offer_accepted",
+    rejected: "rejected",
+    abandoned_no_response: "abandoned",
+  };
+  const latestOutcomeEvent = visibleEvents(eventsFor(app.id))
+    .filter((event) => outcomeByEvent[event.type])
+    .sort((a, b) => `${b.occurredAt}-${b.createdAt || ""}`.localeCompare(`${a.occurredAt}-${a.createdAt || ""}`))[0];
+
+  if (latestOutcomeEvent) return outcomeByEvent[latestOutcomeEvent.type];
+  if (eventTypes.has("offer_accepted")) return "offer_accepted";
+
+  return {
+    Accepted: "offer_accepted",
+    Rejected: "rejected",
+    Abandoned: "abandoned",
+    Withdrawn: "withdrawn",
+  }[stage] || "";
+}
+
+function flowSourceOrder(path) {
+  return { Direct: 0, Referral: 1, Headhunter: 2 }[path] ?? 9;
+}
+
+function flowNodeColumn(node, maximumInterviewStep) {
+  if (node.phase === "source") return 0;
+  if (node.phase === "submitted") return 1;
+  if (node.phase === "progress") return 2;
+  if (node.phase === "interview") return 2 + node.interviewRound;
+  if (node.phase === "offer") return 3 + maximumInterviewStep;
+  if (node.phase === "outcome") return 4 + maximumInterviewStep;
+  return 0;
+}
+
+function flowColumnsFor(nodes) {
+  return [...new Set(nodes.map((node) => node.column))]
+    .sort((a, b) => a - b)
+    .map((id) => ({ id }));
+}
+
+function flowColumnX(columnIndex, nodeWidth, columnGap) {
+  return 24 + columnIndex * (nodeWidth + columnGap);
+}
+
+function flowNodeGap(entries, baseGap, detailed) {
+  if (!detailed || entries.length < 2) return baseGap;
+  if (entries.every((node) => node.phase === "source")) return 120;
+  if (entries.every((node) => node.phase === "interview")) return 64;
+  return 40;
+}
+
+function flowLinkWidth(link, linkUnit) {
+  return Math.max(2, link.value * linkUnit);
+}
+
+function flowPortSpan(links, linkUnit, portGap) {
+  if (!links.length) return 0;
+  return links.reduce((sum, link) => sum + flowLinkWidth(link, linkUnit), 0) + (links.length - 1) * portGap;
+}
+
+function flowNodeHeights(nodes, links, linkUnit, portGap, baseNodeHeight) {
+  return new Map(nodes.map((node) => {
+    const incoming = links.filter((link) => link.targetId === node.id);
+    const outgoing = links.filter((link) => link.sourceId === node.id);
+    const portSpan = Math.max(
+      flowPortSpan(incoming, linkUnit, portGap),
+      flowPortSpan(outgoing, linkUnit, portGap)
+    );
+    return [node.id, Math.max(baseNodeHeight, Math.ceil(portSpan + 20))];
+  }));
+}
+
+function flowColumnHeight(entries, nodeHeights, gap, detailed) {
+  const nodeTotal = entries.reduce((sum, node) => sum + nodeHeights.get(node.id), 0);
+  return nodeTotal + Math.max(0, entries.length - 1) * flowNodeGap(entries, gap, detailed);
+}
+
+function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeight, columnGap, detailed) {
+  const top = 24;
+  const bottom = 30;
+
+  return columns.flatMap((column, columnIndex) => {
+    const entries = nodes
+      .filter((node) => node.column === column.id)
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+    const entryGap = flowNodeGap(entries, gap, detailed);
+    const totalHeight = flowColumnHeight(entries, nodeHeights, gap, detailed);
+    let y = top + Math.max(0, (chartHeight - top - bottom - totalHeight) / 2);
+
+    return entries.map((node) => {
+      const nodeHeight = nodeHeights.get(node.id);
+      const positioned = {
+        ...node,
+        x: flowColumnX(columnIndex, nodeWidth, columnGap),
+        y,
+        width: nodeWidth,
+        height: nodeHeight,
+      };
+      y += nodeHeight + entryGap;
+      return positioned;
+    });
   });
 }
 
-function layoutFlowNodes(entries, x, width, chartHeight, nodeHeight, gap) {
-  const top = 28;
-  const totalHeight = entries.length * nodeHeight + Math.max(0, entries.length - 1) * gap;
-  let y = top + Math.max(0, (chartHeight - top * 2 - totalHeight) / 2);
+function layoutFlowLinks(nodes, links, linkUnit, portGap) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const laidOutLinks = links.map((link) => ({
+    ...link,
+    source: nodeById.get(link.sourceId),
+    target: nodeById.get(link.targetId),
+    width: flowLinkWidth(link, linkUnit),
+  }));
+  laidOutLinks.forEach((link) => { link.color = flowLinkColor(link); });
 
-  return entries.map(([label, value]) => {
-    const node = { label, value, x, y, width, height: nodeHeight };
-    y += nodeHeight + gap;
-    return node;
+  nodes.forEach((node) => {
+    const outgoing = laidOutLinks
+      .filter((link) => link.sourceId === node.id)
+      .sort((a, b) => a.target.y - b.target.y || a.target.order - b.target.order);
+    const incoming = laidOutLinks
+      .filter((link) => link.targetId === node.id)
+      .sort((a, b) => a.source.y - b.source.y || a.source.order - b.source.order);
+    positionFlowPorts(outgoing, node, "sourceY", portGap);
+    positionFlowPorts(incoming, node, "targetY", portGap);
+  });
+
+  return laidOutLinks;
+}
+
+function positionFlowPorts(links, node, property, portGap) {
+  const totalWidth = links.reduce((sum, link) => sum + link.width, 0) + Math.max(0, links.length - 1) * portGap;
+  let cursor = node.y + (node.height - totalWidth) / 2;
+
+  links.forEach((link) => {
+    link[property] = cursor + link.width / 2;
+    cursor += link.width + portGap;
   });
 }
 
-function renderFlowLink(x1, y1, x2, y2, value, total, color) {
-  const strokeWidth = Math.max(7, Math.min(42, (value / total) * 44));
-  const curve = Math.max(70, (x2 - x1) * 0.5);
+function flowLinkColor(link) {
+  if (link.target.phase === "interview") return "#c7922f";
+  if (link.target.phase === "outcome") {
+    return {
+      offer_accepted: "#2f6f5e",
+      rejected: "#b95d54",
+      abandoned: "#65717d",
+      withdrawn: "#6f5d8c",
+    }[link.target.id] || "#2f6f5e";
+  }
+  return {
+    submitted: "#315b8f",
+    progress: "#4e769d",
+    offer: "#2f6f5e",
+    outcome: "#2f6f5e",
+  }[link.target.phase] || "#65717d";
+}
+
+function renderFlowLink(link) {
+  const curve = Math.max(56, (link.target.x - (link.source.x + link.source.width)) * 0.34);
   return `
     <path
       class="flow-link"
-      d="M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}"
+      d="M ${link.source.x + link.source.width} ${link.sourceY} C ${link.source.x + link.source.width + curve} ${link.sourceY}, ${link.target.x - curve} ${link.targetY}, ${link.target.x} ${link.targetY}"
       fill="none"
-      stroke="${color}"
-      stroke-width="${strokeWidth}"
-    />
+      stroke="${link.color}"
+      stroke-width="${link.width}"
+    ><title>${escapeHtml(flowLinkTitle(link))}</title></path>
   `;
 }
 
+function flowLinkTitle(link) {
+  const names = link.applications
+    .slice(0, 4)
+    .map((app) => `${app.companyName} — ${app.jobTitle}`)
+    .join("\n");
+  const remaining = link.applications.length - 4;
+  const suffix = remaining > 0 ? "\nand more" : "";
+  return `${link.source.label} → ${link.target.label}${names ? `\n${names}${suffix}` : ""}`;
+}
+
 function renderFlowNode(node) {
-  const labelY = node.y + Math.max(20, node.height / 2 - 4);
-  const countY = labelY + 18;
+  const labelLines = flowNodeLabelLines(node.label);
+  const labelY = node.y + (node.detail
+    ? Math.round(node.height * 0.42)
+    : labelLines.length === 1
+      ? Math.round(node.height * 0.6)
+      : Math.round(node.height * 0.35));
+  const detailY = node.y + node.height - 7;
 
   return `
     <g>
       <rect class="flow-node" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="8" />
-      <text class="flow-node-label" x="${node.x + 12}" y="${labelY}">${escapeHtml(truncateLabel(node.label, 17))}</text>
-      <text class="flow-node-count" x="${node.x + 12}" y="${countY}">${node.value}</text>
-      <title>${escapeHtml(`${node.label}: ${node.value}`)}</title>
+      ${labelLines.map((line, index) => `<text class="flow-node-label" x="${node.x + 10}" y="${labelY + index * 14}">${escapeHtml(line)}</text>`).join("")}
+      ${node.detail ? `<text class="flow-node-detail" x="${node.x + 10}" y="${detailY}">${escapeHtml(truncateLabel(node.detail, 17))}</text>` : ""}
+      <text class="flow-node-count" x="${node.x + node.width - 10}" y="${node.y + 17}" text-anchor="end">${node.value}</text>
+      <title>${escapeHtml(`${node.label}${node.detail ? ` — ${node.detail}` : ""}: ${node.value}`)}</title>
     </g>
   `;
+}
+
+function flowNodeLabelLines(label) {
+  return {
+    "In progress": ["In", "progress"],
+    "Offer received": ["Offer", "received"],
+    Headhunter: ["Head", "hunter"],
+  }[label] || [truncateLabel(label, 18)];
 }
 
 function flowOutcomeLabel(stage) {

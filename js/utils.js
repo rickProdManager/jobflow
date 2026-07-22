@@ -5,7 +5,7 @@ function stageClass(stage) {
 }
 
 function isClosed(stage) {
-  return ["Offer", "Rejected", "Withdrawn", "Abandoned", "Ghosted"].includes(stage);
+  return ["Offer", "Accepted", "Rejected", "Withdrawn", "Abandoned", "Ghosted"].includes(stage);
 }
 
 function daysAgo(count) {

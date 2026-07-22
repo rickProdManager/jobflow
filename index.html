@@ -26,9 +26,10 @@
 
         <button id="newApplicationButton" class="primary-button">+ Application</button>
         <button id="lockButton" class="lock-button" type="button">Lock</button>
-        <div class="sidebar-credit" aria-label="Vibe coded by Ricardo Gonzalez">
-          <span>Vibe coded by</span>
+        <div class="sidebar-credit" aria-label="Built by Ricardo Gonzalez with assistance from OpenAI Codex">
+          <span>Built by</span>
           <strong>Ricardo Gonzalez</strong>
+          <span>with assistance from OpenAI Codex</span>
         </div>
       </aside>
 
@@ -37,6 +38,7 @@
         <section id="applicationsView" class="view"></section>
         <section id="remindersView" class="view"></section>
         <section id="analyticsView" class="view"></section>
+        <section id="flow-mapView" class="view"></section>
         <section id="settingsView" class="view"></section>
       </main>
     </div>
@@ -105,6 +107,7 @@
               <option>Technical Screen</option>
               <option>Final Interview</option>
               <option>Offer</option>
+              <option>Accepted</option>
               <option>Rejected</option>
               <option>Withdrawn</option>
               <option>Abandoned</option>
@@ -205,14 +208,19 @@
               <option value="interview_completed">Interview completed</option>
               <option value="thank_you_sent">Thank-you sent</option>
               <option value="offer_received">Offer received</option>
+              <option value="offer_accepted">Offer accepted</option>
               <option value="rejected">Rejected</option>
               <option value="abandoned_no_response">Abandoned - no response</option>
               <option value="note_added">Note added</option>
             </select>
           </label>
           <label>
-            Date done
+            <span id="occurredAtLabel">Date done</span>
             <input id="occurredAt" type="date" required />
+          </label>
+          <label id="interviewScheduledForField" hidden>
+            Interview takes place on
+            <input id="interviewScheduledFor" type="date" />
           </label>
         </div>
 

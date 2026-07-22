@@ -4,7 +4,7 @@ A local-first job application tracker for managing applications, documents, foll
 
 The app runs locally on your machine, stores data in SQLite, and does not require a cloud account or external service.
 
-This project was vibe-coded by Ricardo Gonzalez with assistance from OpenAI Codex.
+This project was built by Ricardo Gonzalez with assistance from OpenAI Codex.
 
 ## Features
 
@@ -102,7 +102,7 @@ Stop the server with `Ctrl-C` in the terminal where it is running.
 ├── styles.css              # UI styling
 ├── server.py               # Local HTTP server, API routes, SQLite persistence, auth
 ├── DATABASE_SCHEMA.md      # Database and API/storage details
-├── LICENSE.md              # Source-available/no-license terms
+├── LICENSE.md              # MIT License
 ├── SECURITY.md             # Local security policy
 ├── js/
 │   ├── analytics.js        # Analytics views and charts
@@ -185,7 +185,7 @@ This project was developed with AI assistance. Review, test, and validate the co
 
 ## Authorship And Third-Party Code
 
-This project was vibe-coded by Ricardo Gonzalez with assistance from OpenAI Codex.
+This project was built by Ricardo Gonzalez with assistance from OpenAI Codex.
 
 The CSS in this repository is project-specific app styling. It does not intentionally include copied third-party stylesheets, CSS frameworks, template code, or vendor CSS.
 
@@ -264,12 +264,6 @@ Potential future improvements:
 
 ## License
 
-This project is shared for portfolio and personal reference purposes only.
+This project is licensed under the [MIT License](LICENSE.md).
 
-No license is granted for copying, modifying, distributing, sublicensing, or using this software in another project without prior written permission from the author.
-
-This repository is not offered as open-source software.
-
-See [LICENSE.md](LICENSE.md) for the full source-available/no-license terms.
-
-Copyright (c) 2026 Ricardo Gonzalez. All rights reserved.
+Copyright (c) 2026 Ricardo Gonzalez.

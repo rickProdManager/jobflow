@@ -1,6 +1,7 @@
 // Primary view rendering and reusable UI fragments.
 
 function render() {
+  document.body.classList.toggle("flow-map-mode", state.activeView === "flow-map");
   document.querySelectorAll(".nav-button").forEach((button) => {
     button.classList.toggle("active", button.dataset.view === state.activeView);
   });
@@ -12,6 +13,7 @@ function render() {
   renderApplications();
   renderReminders();
   renderAnalytics();
+  renderFlowMap();
   renderSettings();
 }
 
@@ -56,7 +58,6 @@ function renderDashboard() {
 }
 
 function renderApplications() {
-  const applications = filteredApplications();
   const stageOptions = ["All", ...stageOrder].map((stage) => {
     const selected = stage === state.stageFilter ? "selected" : "";
     return `<option ${selected}>${stage}</option>`;
@@ -67,15 +68,15 @@ function renderApplications() {
       <div>
         <p class="eyebrow">Pipeline</p>
         <h2>Applications</h2>
-        ${state.applicationFilterLabel ? `<p class="meta"><span>${escapeHtml(state.applicationFilterLabel)}</span><button class="mini-button" id="clearApplicationFilter">Clear</button></p>` : ""}
+        ${state.applicationFilterLabel ? `<p class="meta" id="applicationFilterLabel"><span>${escapeHtml(state.applicationFilterLabel)}</span><button class="mini-button" id="clearApplicationFilter">Clear</button></p>` : ""}
       </div>
       <div class="toolbar">
         <input class="search-input" id="searchInput" placeholder="Search company or role" value="${escapeHtml(state.search)}" />
         <select id="stageFilter">${stageOptions}</select>
       </div>
     </div>
-    <div class="application-list">
-      ${applications.length ? applications.map(renderApplicationCard).join("") : `<p class="empty">No applications match this view.</p>`}
+    <div class="application-list" id="applicationResults">
+      ${applicationListMarkup()}
     </div>
   `;
 
@@ -83,8 +84,9 @@ function renderApplications() {
     state.search = event.target.value;
     state.applicationIdsFilter = null;
     state.applicationFilterLabel = "";
+    document.getElementById("applicationFilterLabel")?.remove();
     replaceHistoryState();
-    renderApplications();
+    renderApplicationResults();
   });
 
   document.getElementById("stageFilter").addEventListener("change", (event) => {
@@ -102,6 +104,20 @@ function renderApplications() {
     renderApplications();
   });
 
+  bindCardActions();
+}
+
+function applicationListMarkup() {
+  const applications = filteredApplications();
+  return applications.length
+    ? applications.map(renderApplicationCard).join("")
+    : `<p class="empty">No applications match this view.</p>`;
+}
+
+function renderApplicationResults() {
+  const results = document.getElementById("applicationResults");
+  if (!results) return;
+  results.innerHTML = applicationListMarkup();
   bindCardActions();
 }
 

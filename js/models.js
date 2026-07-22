@@ -189,6 +189,7 @@ function normalizeStage(stage) {
 function latestTerminalEventStage(applicationId) {
   const terminalStageByEvent = {
     offer_received: "Offer",
+    offer_accepted: "Accepted",
     rejected: "Rejected",
     abandoned_no_response: "Abandoned",
   };
