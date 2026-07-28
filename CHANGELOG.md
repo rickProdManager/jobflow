@@ -6,6 +6,13 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-07-28
+
+### Changed
+
+- Made the full Flow map open in a share-ready one-page layout by default: it scales to the available page width, spreads entry and outcome nodes across the full height, and keeps active interview routes centered, eliminating horizontal scrolling for normal flow maps.
+- Added a layout switcher so the previous wide, scrollable detailed map remains available for close route-by-route review.
+
 ## 2026-07-22
 
 ### Changed

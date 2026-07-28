@@ -21,6 +21,7 @@ const state = {
   analyticsFrom: "",
   analyticsTo: "",
   analyticsChart: "flow",
+  flowMapLayout: "fit",
   timelineStatusFilter: "all",
   timelinePage: 0,
   auth: {

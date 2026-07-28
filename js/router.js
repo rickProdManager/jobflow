@@ -25,6 +25,7 @@ function syncStateFromUrl() {
   state.analyticsFrom = params.get("from") || "";
   state.analyticsTo = params.get("to") || "";
   state.analyticsChart = validAnalyticsChart(params.get("chart"));
+  state.flowMapLayout = validFlowMapLayout(params.get("flowLayout"));
   state.timelineStatusFilter = validTimelineStatus(params.get("timelineStatus"));
   state.timelinePage = validTimelinePage(params.get("timelinePage"));
 }
@@ -69,6 +70,9 @@ function appUrlFromState() {
       if (state.timelineStatusFilter !== "all") params.set("timelineStatus", state.timelineStatusFilter);
       if (state.timelinePage > 0) params.set("timelinePage", String(state.timelinePage));
     }
+    if (state.activeView === "flow-map" && state.flowMapLayout !== "fit") {
+      params.set("flowLayout", state.flowMapLayout);
+    }
   }
 
   const query = params.toString();
@@ -86,6 +90,7 @@ function routePayload() {
     analyticsFrom: state.analyticsFrom,
     analyticsTo: state.analyticsTo,
     analyticsChart: state.analyticsChart,
+    flowMapLayout: state.flowMapLayout,
     timelineStatusFilter: state.timelineStatusFilter,
     timelinePage: state.timelinePage,
   };
@@ -118,6 +123,10 @@ function validAnalyticsSegment(value) {
 
 function validAnalyticsChart(value) {
   return ["bars", "donut", "flow"].includes(value) ? value : "flow";
+}
+
+function validFlowMapLayout(value) {
+  return ["fit", "review"].includes(value) ? value : "fit";
 }
 
 function validTimelineStatus(value) {

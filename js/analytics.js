@@ -54,7 +54,7 @@ function renderAnalytics() {
       <div class="panel">
         <div class="panel-heading">
           <h3>${analyticsChartTitle()}</h3>
-          ${state.analyticsChart === "flow" ? `<button type="button" class="mini-button" data-open-flow-map>Open detailed map</button>` : ""}
+          ${state.analyticsChart === "flow" ? `<button type="button" class="mini-button" data-open-flow-map>Open full map</button>` : ""}
         </div>
         <div class="chart">${renderSelectedChart(segmentCounts, apps)}</div>
       </div>
@@ -125,17 +125,25 @@ function renderFlowMap() {
   }
 
   const applications = analyticsApplications();
+  const isFitLayout = state.flowMapLayout === "fit";
   container.innerHTML = `
     <div class="flow-map-page">
       <div class="page-header flow-map-header">
         <div>
           <p class="eyebrow">Application routes</p>
-          <h2>Detailed flow map</h2>
+          <h2>${isFitLayout ? "One-page flow map" : "Detailed flow map"}</h2>
+          <p class="meta">${isFitLayout ? "Share-ready layout that uses the full page height without horizontal scrolling." : "Scrollable layout for inspecting individual routes in detail."}</p>
         </div>
-        <button type="button" class="mini-button" data-close-flow-map>Back to Analytics</button>
+        <div class="flow-map-actions">
+          <div class="flow-map-layout-toggle" aria-label="Flow map layout">
+            <button type="button" class="mini-button ${isFitLayout ? "is-active" : ""}" data-flow-map-layout="fit" aria-pressed="${isFitLayout}">Fit to one page</button>
+            <button type="button" class="mini-button ${!isFitLayout ? "is-active" : ""}" data-flow-map-layout="review" aria-pressed="${!isFitLayout}">Scrollable review</button>
+          </div>
+          <button type="button" class="mini-button" data-close-flow-map>Back to Analytics</button>
+        </div>
       </div>
-      <div class="flow-map-canvas">
-        ${renderFlowChart(applications, { detailed: true })}
+      <div class="flow-map-canvas ${isFitLayout ? "flow-map-canvas-fit" : ""}">
+        ${renderFlowChart(applications, { layout: state.flowMapLayout })}
       </div>
     </div>
   `;
@@ -144,6 +152,14 @@ function renderFlowMap() {
     state.activeView = "analytics";
     pushHistoryState();
     render();
+  });
+
+  document.querySelectorAll("[data-flow-map-layout]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.flowMapLayout = validFlowMapLayout(button.dataset.flowMapLayout);
+      pushHistoryState();
+      render();
+    });
   });
 }
 
@@ -597,37 +613,50 @@ function renderDonutChart(counts) {
 function renderFlowChart(applications, options = {}) {
   if (!applications.length) return `<p class="empty">No application flow data yet.</p>`;
 
-  const detailed = Boolean(options.detailed);
+  const layout = options.layout || "embedded";
+  const detailed = layout === "review";
+  const fitToPage = layout === "fit";
   const flow = buildApplicationFlow(applications);
   const columns = flowColumnsFor(flow.nodes);
   const largestNodeValue = Math.max(1, ...flow.nodes.map((node) => node.value));
-  const linkUnit = detailed
+  const linkUnit = fitToPage
+    ? Math.min(8, Math.max(0.45, 32 / largestNodeValue))
+    : detailed
     ? Math.min(11, Math.max(0.5, 42 / largestNodeValue))
     : Math.min(6, Math.max(0.35, 22 / largestNodeValue));
-  const baseNodeHeight = detailed ? 56 : 36;
-  const portGap = detailed ? 24 : 4;
-  const nodeWidth = detailed ? 160 : 104;
-  const columnGap = detailed ? 300 : 44;
-  const nodeGap = detailed ? 32 : 8;
+  const baseNodeHeight = fitToPage || detailed ? 56 : 36;
+  const portGap = fitToPage ? 16 : detailed ? 24 : 4;
+  const nodeWidth = fitToPage ? 148 : detailed ? 160 : 104;
+  const columnGap = fitToPage ? 72 : detailed ? 300 : 44;
+  const nodeGap = fitToPage ? 24 : detailed ? 32 : 8;
   const nodeHeights = flowNodeHeights(flow.nodes, flow.links, linkUnit, portGap, baseNodeHeight);
   const tallestColumn = Math.max(...columns.map((column) => {
     const entries = flow.nodes.filter((node) => node.column === column.id);
     return flowColumnHeight(entries, nodeHeights, nodeGap, detailed);
   }));
-  const chartWidth = Math.max(detailed ? 2500 : 620, 48 + columns.length * nodeWidth + Math.max(0, columns.length - 1) * columnGap);
-  const chartHeight = Math.max(detailed ? 500 : 176, 56 + tallestColumn);
-  const nodes = layoutFlowNodes(flow.nodes, columns, nodeWidth, nodeHeights, nodeGap, chartHeight, columnGap, detailed);
+  const chartWidth = Math.max(
+    fitToPage ? 980 : detailed ? 2500 : 620,
+    48 + columns.length * nodeWidth + Math.max(0, columns.length - 1) * columnGap
+  );
+  const chartHeight = Math.max(fitToPage ? 720 : detailed ? 500 : 176, 56 + tallestColumn);
+  const nodes = layoutFlowNodes(flow.nodes, columns, nodeWidth, nodeHeights, nodeGap, chartHeight, columnGap, {
+    detailed,
+    fitToPage,
+  });
   const links = layoutFlowLinks(nodes, flow.links, linkUnit, portGap);
+  const caption = fitToPage
+    ? "One-page view spreads each stage across the full height of the page. Use it for screenshots, printing, and sharing; switch to Scrollable review to inspect individual routes more closely."
+    : "Each band follows recorded application progress. Hover a band to see the applications it represents; interview stages are numbered, while completed interviews remain in Application timelines.";
 
   return `
     <div class="flow-wrapper">
-      <div class="flow-scroll">
-        <svg class="chart-svg flow-chart ${detailed ? "flow-chart-detailed" : ""}" viewBox="0 0 ${chartWidth} ${chartHeight}" style="--flow-width: ${chartWidth}px" role="img" aria-label="Application flow Sankey chart">
+      <div class="flow-scroll ${fitToPage ? "flow-scroll-fit" : ""}">
+        <svg class="chart-svg flow-chart ${detailed ? "flow-chart-detailed" : ""} ${fitToPage ? "flow-chart-fit" : ""}" viewBox="0 0 ${chartWidth} ${chartHeight}" style="--flow-width: ${chartWidth}px" role="img" aria-label="${fitToPage ? "Application flow Sankey chart, fit to one page" : "Application flow Sankey chart"}">
           ${links.map(renderFlowLink).join("")}
           ${nodes.map(renderFlowNode).join("")}
         </svg>
       </div>
-      <p class="flow-caption">Each band follows recorded application progress. Hover a band to see the applications it represents; interview stages are numbered, while completed interviews remain in Application timelines.</p>
+      <p class="flow-caption">${caption}</p>
     </div>
   `;
 }
@@ -830,7 +859,7 @@ function flowColumnHeight(entries, nodeHeights, gap, detailed) {
   return nodeTotal + Math.max(0, entries.length - 1) * flowNodeGap(entries, gap, detailed);
 }
 
-function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeight, columnGap, detailed) {
+function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeight, columnGap, options = {}) {
   const top = 24;
   const bottom = 30;
 
@@ -838,9 +867,16 @@ function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeigh
     const entries = nodes
       .filter((node) => node.column === column.id)
       .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
-    const entryGap = flowNodeGap(entries, gap, detailed);
-    const totalHeight = flowColumnHeight(entries, nodeHeights, gap, detailed);
-    let y = top + Math.max(0, (chartHeight - top - bottom - totalHeight) / 2);
+    const entryGap = flowNodeGap(entries, gap, options.detailed);
+    const totalHeight = flowColumnHeight(entries, nodeHeights, gap, options.detailed);
+    const availableHeight = chartHeight - top - bottom;
+    const spreadColumn = options.fitToPage && flowColumnUsesFullHeight(entries);
+    const spreadGap = spreadColumn
+      ? Math.max(entryGap, (availableHeight - entries.reduce((sum, node) => sum + nodeHeights.get(node.id), 0)) / (entries.length - 1))
+      : entryGap;
+    let y = spreadColumn
+      ? top
+      : top + Math.max(0, (availableHeight - totalHeight) / 2);
 
     return entries.map((node) => {
       const nodeHeight = nodeHeights.get(node.id);
@@ -851,10 +887,16 @@ function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeigh
         width: nodeWidth,
         height: nodeHeight,
       };
-      y += nodeHeight + entryGap;
+      y += nodeHeight + spreadGap;
       return positioned;
     });
   });
+}
+
+function flowColumnUsesFullHeight(entries) {
+  return entries.length > 1 && entries.every((node) => (
+    node.phase === "source" || node.phase === "outcome"
+  ));
 }
 
 function layoutFlowLinks(nodes, links, linkUnit, portGap) {

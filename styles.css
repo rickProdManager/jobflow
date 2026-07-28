@@ -383,6 +383,48 @@ h3 {
   padding: 20px;
 }
 
+.flow-map-header {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.flow-map-header .meta {
+  margin: 6px 0 0;
+  max-width: 600px;
+}
+
+.flow-map-actions,
+.flow-map-layout-toggle {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.flow-map-layout-toggle {
+  background: #eef3f0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.flow-map-layout-toggle .mini-button {
+  border-color: transparent;
+}
+
+.flow-map-layout-toggle .mini-button.is-active {
+  background: #fff;
+  border-color: #cfd8d3;
+  box-shadow: 0 1px 4px rgba(29, 35, 41, 0.08);
+  color: var(--green-dark);
+}
+
+.flow-map-canvas-fit {
+  overflow: hidden;
+  padding: 24px;
+}
+
 .application-list,
 .reminder-list,
 .timeline-list {
@@ -641,6 +683,10 @@ h3 {
   padding-bottom: 4px;
 }
 
+.flow-scroll-fit {
+  overflow: visible;
+}
+
 .flow-chart {
   max-width: none;
   min-height: 210px;
@@ -650,6 +696,14 @@ h3 {
 
 .flow-chart-detailed {
   min-height: 380px;
+}
+
+.flow-chart-fit {
+  display: block;
+  height: auto;
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .flow-chart-detailed .flow-node-label {
