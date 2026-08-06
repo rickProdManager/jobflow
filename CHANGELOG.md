@@ -6,6 +6,20 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-08-06
+
+### Added
+
+- Added a Flow-map privacy option that replaces company and role details with consistent aliases (`Company A` through `Company Z`, then `Company AA`, `Company AB`, and so on) for safer public sharing.
+
+### Changed
+
+- Kept the first two interview rounds as branching map steps, then align each application's third and later interview rounds exactly with that application's Interview 2 box.
+- Keep rejected interview routes in the upper interview lane and abandoned or withdrawn routes in the lower lane, with clear outer margins and active routes in the middle.
+- Route direct Submitted-to-Rejected and Submitted-to-Abandoned paths as single outer arcs along the map’s top and bottom edges, reserving an interior lane for interviews as the pipeline grows.
+- Adapt the one-page Flow map to the screen and visible interview-route density: roomy screens with a small pipeline use larger boxes and type, while denser or narrower views automatically compact.
+- Increase the visual weight of active Flow ribbons, making Submitted-to-In progress and interview-to-interview paths easier to follow.
+
 ## 2026-07-28
 
 ### Changed
@@ -24,11 +38,11 @@ Version labels are human-readable project milestones. GitHub releases or tags ar
 - Split interview scheduled from interview completed in analytics so scheduling an interview no longer inflates the Interviewed total.
 - Let Flow use its full panel width while retaining the original Analytics pane layout, and allow any number of interview-scheduled or interview-completed activities for an application.
 - Show each recorded interview in Flow as a numbered progression step, rather than folding multiple interview rounds into a single aggregate node.
-- Reworked Flow into an application-route Sankey: distinct paths branch from Submitted, interview rounds are numbered, and hover details identify the applications represented by each band.
-- Use compact route rows in Application timelines, keep the embedded Sankey compact, and provide a focused detailed-map view for exploring the full Flow without other analytics panes.
-- Show a compact count in each Sankey node, increase spacing in the detailed map, and show event dates below Application timeline route bubbles.
+- Reworked Flow into an application-route map: distinct paths branch from Submitted, interview rounds are numbered, and hover details identify the applications represented by each band.
+- Use compact route rows in Application timelines, keep the embedded Flow map compact, and provide a focused detailed-map view for exploring the full Flow without other analytics panes.
+- Show a compact count in each Flow-map node, increase spacing in the detailed map, and show event dates below Application timeline route bubbles.
 - Separate the date an interview is scheduled from its planned date and use the planned date in Application timelines.
-- Reserve visible whitespace between Sankey ribbons at every node so separate routes no longer visually merge.
+- Reserve visible whitespace between Flow-map ribbons at every node so separate routes no longer visually merge.
 
 ## 2026-06-24
 

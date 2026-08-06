@@ -1,5 +1,8 @@
 // Analytics view rendering, metrics, timelines, and SVG charts.
 
+let flowMapResizeBound = false;
+let flowMapResizeTimer = null;
+
 function renderAnalytics() {
   const apps = analyticsApplications();
   const events = analyticsEvents(apps);
@@ -118,6 +121,7 @@ function renderAnalytics() {
 }
 
 function renderFlowMap() {
+  bindFlowMapResponsiveSizing();
   const container = document.getElementById("flow-mapView");
   if (state.activeView !== "flow-map") {
     container.innerHTML = "";
@@ -126,6 +130,7 @@ function renderFlowMap() {
 
   const applications = analyticsApplications();
   const isFitLayout = state.flowMapLayout === "fit";
+  const usesCompanyAliases = state.flowMapPrivacyMode;
   container.innerHTML = `
     <div class="flow-map-page">
       <div class="page-header flow-map-header">
@@ -139,11 +144,18 @@ function renderFlowMap() {
             <button type="button" class="mini-button ${isFitLayout ? "is-active" : ""}" data-flow-map-layout="fit" aria-pressed="${isFitLayout}">Fit to one page</button>
             <button type="button" class="mini-button ${!isFitLayout ? "is-active" : ""}" data-flow-map-layout="review" aria-pressed="${!isFitLayout}">Scrollable review</button>
           </div>
+          <div class="flow-map-layout-toggle" aria-label="Company label privacy">
+            <button type="button" class="mini-button ${!usesCompanyAliases ? "is-active" : ""}" data-flow-map-privacy="names" aria-pressed="${!usesCompanyAliases}">Full names</button>
+            <button type="button" class="mini-button ${usesCompanyAliases ? "is-active" : ""}" data-flow-map-privacy="aliases" aria-pressed="${usesCompanyAliases}">Company aliases</button>
+          </div>
           <button type="button" class="mini-button" data-close-flow-map>Back to Analytics</button>
         </div>
       </div>
       <div class="flow-map-canvas ${isFitLayout ? "flow-map-canvas-fit" : ""}">
-        ${renderFlowChart(applications, { layout: state.flowMapLayout })}
+        ${renderFlowChart(applications, {
+          layout: state.flowMapLayout,
+          anonymizeCompanies: usesCompanyAliases,
+        })}
       </div>
     </div>
   `;
@@ -157,6 +169,14 @@ function renderFlowMap() {
   document.querySelectorAll("[data-flow-map-layout]").forEach((button) => {
     button.addEventListener("click", () => {
       state.flowMapLayout = validFlowMapLayout(button.dataset.flowMapLayout);
+      pushHistoryState();
+      render();
+    });
+  });
+
+  document.querySelectorAll("[data-flow-map-privacy]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.flowMapPrivacyMode = button.dataset.flowMapPrivacy === "aliases";
       pushHistoryState();
       render();
     });
@@ -616,42 +636,67 @@ function renderFlowChart(applications, options = {}) {
   const layout = options.layout || "embedded";
   const detailed = layout === "review";
   const fitToPage = layout === "fit";
-  const flow = buildApplicationFlow(applications);
+  const anonymizeCompanies = Boolean(options.anonymizeCompanies);
+  const flow = buildApplicationFlow(applications, { anonymizeCompanies });
   const columns = flowColumnsFor(flow.nodes);
   const largestNodeValue = Math.max(1, ...flow.nodes.map((node) => node.value));
+  const flowPresentation = flowMapPresentation(flow.nodes, layout);
+  const fitSizing = flowFitSizing(flowPresentation);
+  const flowBypassSpace = fitToPage && flow.nodes.some((node) => node.phase === "progress")
+    ? fitSizing.bypassSpace
+    : 0;
   const linkUnit = fitToPage
     ? Math.min(8, Math.max(0.45, 32 / largestNodeValue))
     : detailed
     ? Math.min(11, Math.max(0.5, 42 / largestNodeValue))
     : Math.min(6, Math.max(0.35, 22 / largestNodeValue));
-  const baseNodeHeight = fitToPage || detailed ? 56 : 36;
-  const portGap = fitToPage ? 16 : detailed ? 24 : 4;
-  const nodeWidth = fitToPage ? 148 : detailed ? 160 : 104;
-  const columnGap = fitToPage ? 72 : detailed ? 300 : 44;
-  const nodeGap = fitToPage ? 24 : detailed ? 32 : 8;
-  const nodeHeights = flowNodeHeights(flow.nodes, flow.links, linkUnit, portGap, baseNodeHeight);
+  const baseNodeHeight = fitToPage ? fitSizing.nodeHeight : detailed ? 56 : 36;
+  const portGap = fitToPage ? fitSizing.portGap : detailed ? 24 : 4;
+  const nodeWidth = fitToPage ? fitSizing.nodeWidth : detailed ? 160 : 104;
+  const columnGap = fitToPage ? fitSizing.columnGap : detailed ? 300 : 44;
+  const nodeGap = fitToPage ? fitSizing.nodeGap : detailed ? 32 : 8;
+  const activeLinkStyle = {
+    minimumWidth: fitToPage ? fitSizing.activeLinkMinimum : 2,
+    widthMultiplier: fitToPage ? fitSizing.activeLinkMultiplier : 1,
+  };
+  const nodeHeights = flowNodeHeights(flow.nodes, flow.links, linkUnit, portGap, baseNodeHeight, activeLinkStyle);
   const tallestColumn = Math.max(...columns.map((column) => {
     const entries = flow.nodes.filter((node) => node.column === column.id);
     return flowColumnHeight(entries, nodeHeights, nodeGap, detailed);
   }));
   const chartWidth = Math.max(
     fitToPage ? 980 : detailed ? 2500 : 620,
-    48 + columns.length * nodeWidth + Math.max(0, columns.length - 1) * columnGap
+    48 + columns.length * nodeWidth + Math.max(0, columns.length - 1) * columnGap + flowBypassSpace
   );
-  const chartHeight = Math.max(fitToPage ? 720 : detailed ? 500 : 176, 56 + tallestColumn);
+  const interviewRouteMinimumHeight = layout === "embedded"
+    ? 0
+    : flowInterviewRouteMinimumHeight(flow.nodes, nodeHeights);
+  const chartHeight = Math.max(
+    fitToPage ? fitSizing.chartHeight : detailed ? 500 : 176,
+    56 + tallestColumn,
+    interviewRouteMinimumHeight
+  );
   const nodes = layoutFlowNodes(flow.nodes, columns, nodeWidth, nodeHeights, nodeGap, chartHeight, columnGap, {
     detailed,
     fitToPage,
+    flowBypassSpace,
   });
-  const links = layoutFlowLinks(nodes, flow.links, linkUnit, portGap);
-  const caption = fitToPage
+  if (layout !== "embedded") {
+    alignFlowInterviewRoutesByOutcome(nodes, chartHeight);
+    alignFlowInterviewContinuations(nodes);
+  }
+  nodes.forEach((node) => { node.flowPresentation = flowPresentation; });
+  const links = layoutFlowLinks(nodes, flow.links, linkUnit, portGap, chartHeight, activeLinkStyle);
+  const caption = anonymizeCompanies
+    ? "Company names and role titles are replaced with generated aliases for safer sharing. Aliases stay consistent within this map: Company A through Company Z, then Company AA, Company AB, and so on."
+    : fitToPage
     ? "One-page view spreads each stage across the full height of the page. Use it for screenshots, printing, and sharing; switch to Scrollable review to inspect individual routes more closely."
     : "Each band follows recorded application progress. Hover a band to see the applications it represents; interview stages are numbered, while completed interviews remain in Application timelines.";
 
   return `
     <div class="flow-wrapper">
       <div class="flow-scroll ${fitToPage ? "flow-scroll-fit" : ""}">
-        <svg class="chart-svg flow-chart ${detailed ? "flow-chart-detailed" : ""} ${fitToPage ? "flow-chart-fit" : ""}" viewBox="0 0 ${chartWidth} ${chartHeight}" style="--flow-width: ${chartWidth}px" role="img" aria-label="${fitToPage ? "Application flow Sankey chart, fit to one page" : "Application flow Sankey chart"}">
+        <svg class="chart-svg flow-chart ${detailed ? "flow-chart-detailed" : ""} ${fitToPage ? `flow-chart-fit flow-chart-${flowPresentation}` : ""}" viewBox="0 0 ${chartWidth} ${chartHeight}" style="--flow-width: ${chartWidth}px" role="img" aria-label="${fitToPage ? "Application Flow map, fit to one page" : "Application Flow map"}">
           ${links.map(renderFlowLink).join("")}
           ${nodes.map(renderFlowNode).join("")}
         </svg>
@@ -661,21 +706,65 @@ function renderFlowChart(applications, options = {}) {
   `;
 }
 
+function bindFlowMapResponsiveSizing() {
+  if (flowMapResizeBound) return;
+
+  window.addEventListener("resize", () => {
+    if (state.activeView !== "flow-map") return;
+    window.clearTimeout(flowMapResizeTimer);
+    flowMapResizeTimer = window.setTimeout(() => {
+      if (state.activeView === "flow-map") render();
+    }, 120);
+  });
+  flowMapResizeBound = true;
+}
+
+function flowMapPresentation(nodes, layout) {
+  if (layout !== "fit") return "compact";
+
+  const viewportWidth = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+  const interviewRouteCount = new Set(nodes
+    .filter((node) => node.phase === "interview" && node.applicationId)
+    .map((node) => node.applicationId)).size;
+
+  // CSS viewport widths are smaller than screenshot pixels on high-density
+  // displays. Route density is the primary readability constraint; only use
+  // the compact map on a genuinely narrow viewport or a dense interview set.
+  if (viewportWidth >= 700 && interviewRouteCount <= 4) return "roomy";
+  if (viewportWidth >= 700 && interviewRouteCount <= 7) return "comfortable";
+  return "compact";
+}
+
+function flowFitSizing(presentation) {
+  if (presentation === "roomy") {
+    return { nodeHeight: 140, nodeWidth: 240, portGap: 28, columnGap: 56, nodeGap: 38, bypassSpace: 96, chartHeight: 1180, activeLinkMinimum: 7, activeLinkMultiplier: 1.3 };
+  }
+  if (presentation === "comfortable") {
+    return { nodeHeight: 78, nodeWidth: 180, portGap: 20, columnGap: 64, nodeGap: 30, bypassSpace: 132, chartHeight: 800, activeLinkMinimum: 5, activeLinkMultiplier: 1.15 };
+  }
+  return { nodeHeight: 56, nodeWidth: 148, portGap: 16, columnGap: 72, nodeGap: 24, bypassSpace: 144, chartHeight: 720, activeLinkMinimum: 2, activeLinkMultiplier: 1 };
+}
+
 const FLOW_MILESTONES = {
   in_progress: { id: "in_progress", label: "In progress", phase: "progress", order: 0 },
   offer_received: { label: "Offer received", phase: "offer", order: 0 },
-  offer_accepted: { label: "Accepted", phase: "outcome", order: 0 },
-  rejected: { label: "Rejected", phase: "outcome", order: 1 },
-  abandoned: { label: "Abandoned", phase: "outcome", order: 2 },
-  withdrawn: { label: "Withdrawn", phase: "outcome", order: 3 },
+  rejected: { label: "Rejected", phase: "outcome", order: 0 },
+  offer_accepted: { label: "Accepted", phase: "outcome", order: 1 },
+  withdrawn: { label: "Withdrawn", phase: "outcome", order: 2 },
+  abandoned: { label: "Abandoned", phase: "outcome", order: 3 },
 };
 
-function buildApplicationFlow(applications) {
+const FLOW_INTERVIEW_EDGE_INSET = 96;
+const FLOW_INTERVIEW_LANE_GAP = 28;
+
+function buildApplicationFlow(applications, options = {}) {
   const nodeById = new Map();
   const linkById = new Map();
+  const companyAliases = options.anonymizeCompanies ? flowCompanyAliases(applications) : null;
 
   applications.forEach((app) => {
-    const route = applicationFlowRoute(app);
+    const displayCompany = flowCompanyDisplayName(app, companyAliases);
+    const route = applicationFlowRoute(app, { displayCompany });
     route.forEach((node) => nodeById.set(node.id, node));
 
     route.slice(1).forEach((target, index) => {
@@ -689,7 +778,10 @@ function buildApplicationFlow(applications) {
         applications: [],
       };
       link.value += 1;
-      link.applications.push(app);
+      link.applications.push({
+        companyName: displayCompany,
+        jobTitle: options.anonymizeCompanies ? "" : app.jobTitle,
+      });
       linkById.set(id, link);
     });
   });
@@ -712,7 +804,7 @@ function buildApplicationFlow(applications) {
   return { nodes, links };
 }
 
-function applicationFlowRoute(app) {
+function applicationFlowRoute(app, options = {}) {
   const path = applicationPathLabel(app);
   const events = visibleEvents(eventsFor(app.id));
   const eventTypes = new Set(events.map((event) => event.type));
@@ -734,10 +826,12 @@ function applicationFlowRoute(app) {
     route.push({
       id: `interview:${round}:${app.id}`,
       label: `Interview ${round}`,
-      detail: app.companyName,
+      detail: options.displayCompany || app.companyName,
       phase: "interview",
       date: dateOnly(event.scheduledFor || event.occurredAt),
       interviewRound: round,
+      applicationId: app.id,
+      flowOutcome: outcome,
       order: 0,
     });
   });
@@ -747,6 +841,33 @@ function applicationFlowRoute(app) {
   if (outcome) route.push({ id: outcome, ...FLOW_MILESTONES[outcome], date: latestFlowOutcomeDate(events, outcome) || dateOnly(app.updatedAt) });
 
   return route;
+}
+
+function flowCompanyAliases(applications) {
+  const companyKeys = [...new Set(applications.map(flowCompanyKey))]
+    .sort((a, b) => a.localeCompare(b));
+  return new Map(companyKeys.map((key, index) => [key, flowCompanyAlias(index)]));
+}
+
+function flowCompanyKey(app) {
+  return app.companyName?.trim() || `application:${app.id}`;
+}
+
+function flowCompanyDisplayName(app, aliases) {
+  if (!aliases) return app.companyName;
+  return aliases.get(flowCompanyKey(app)) || "Company";
+}
+
+function flowCompanyAlias(index) {
+  let value = index;
+  let suffix = "";
+
+  do {
+    suffix = String.fromCharCode(65 + (value % 26)) + suffix;
+    value = Math.floor(value / 26) - 1;
+  } while (value >= 0);
+
+  return `Company ${suffix}`;
 }
 
 function firstFlowEventDate(events, types) {
@@ -822,8 +943,9 @@ function flowColumnsFor(nodes) {
     .map((id) => ({ id }));
 }
 
-function flowColumnX(columnIndex, nodeWidth, columnGap) {
-  return 24 + columnIndex * (nodeWidth + columnGap);
+function flowColumnX(columnIndex, nodeWidth, columnGap, flowBypassSpace = 0) {
+  const bypassOffset = columnIndex >= 2 ? flowBypassSpace : 0;
+  return 24 + columnIndex * (nodeWidth + columnGap) + bypassOffset;
 }
 
 function flowNodeGap(entries, baseGap, detailed) {
@@ -833,22 +955,31 @@ function flowNodeGap(entries, baseGap, detailed) {
   return 40;
 }
 
-function flowLinkWidth(link, linkUnit) {
-  return Math.max(2, link.value * linkUnit);
+function flowLinkWidth(link, linkUnit, activeLinkStyle = {}) {
+  if (!flowLinkIsActivePath(link)) return Math.max(2, link.value * linkUnit);
+
+  return Math.max(
+    activeLinkStyle.minimumWidth || 2,
+    link.value * linkUnit * (activeLinkStyle.widthMultiplier || 1)
+  );
 }
 
-function flowPortSpan(links, linkUnit, portGap) {
+function flowLinkIsActivePath(link) {
+  return link.targetId === "in_progress" || link.targetId?.startsWith("interview:");
+}
+
+function flowPortSpan(links, linkUnit, portGap, activeLinkStyle) {
   if (!links.length) return 0;
-  return links.reduce((sum, link) => sum + flowLinkWidth(link, linkUnit), 0) + (links.length - 1) * portGap;
+  return links.reduce((sum, link) => sum + flowLinkWidth(link, linkUnit, activeLinkStyle), 0) + (links.length - 1) * portGap;
 }
 
-function flowNodeHeights(nodes, links, linkUnit, portGap, baseNodeHeight) {
+function flowNodeHeights(nodes, links, linkUnit, portGap, baseNodeHeight, activeLinkStyle) {
   return new Map(nodes.map((node) => {
     const incoming = links.filter((link) => link.targetId === node.id);
     const outgoing = links.filter((link) => link.sourceId === node.id);
     const portSpan = Math.max(
-      flowPortSpan(incoming, linkUnit, portGap),
-      flowPortSpan(outgoing, linkUnit, portGap)
+      flowPortSpan(incoming, linkUnit, portGap, activeLinkStyle),
+      flowPortSpan(outgoing, linkUnit, portGap, activeLinkStyle)
     );
     return [node.id, Math.max(baseNodeHeight, Math.ceil(portSpan + 20))];
   }));
@@ -857,6 +988,23 @@ function flowNodeHeights(nodes, links, linkUnit, portGap, baseNodeHeight) {
 function flowColumnHeight(entries, nodeHeights, gap, detailed) {
   const nodeTotal = entries.reduce((sum, node) => sum + nodeHeights.get(node.id), 0);
   return nodeTotal + Math.max(0, entries.length - 1) * flowNodeGap(entries, gap, detailed);
+}
+
+function flowInterviewRouteMinimumHeight(nodes, nodeHeights) {
+  const laneHeights = new Map();
+  nodes
+    .filter((node) => node.phase === "interview" && node.applicationId)
+    .forEach((node) => {
+      const currentHeight = laneHeights.get(node.applicationId) || 0;
+      laneHeights.set(node.applicationId, Math.max(currentHeight, nodeHeights.get(node.id) || 0));
+    });
+
+  if (!laneHeights.size) return 0;
+
+  const totalLaneHeight = [...laneHeights.values()].reduce((sum, height) => sum + height, 0);
+  return 24 + 30 + FLOW_INTERVIEW_EDGE_INSET * 2
+    + totalLaneHeight
+    + Math.max(0, laneHeights.size - 1) * FLOW_INTERVIEW_LANE_GAP;
 }
 
 function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeight, columnGap, options = {}) {
@@ -882,7 +1030,7 @@ function layoutFlowNodes(nodes, columns, nodeWidth, nodeHeights, gap, chartHeigh
       const nodeHeight = nodeHeights.get(node.id);
       const positioned = {
         ...node,
-        x: flowColumnX(columnIndex, nodeWidth, columnGap),
+        x: flowColumnX(columnIndex, nodeWidth, columnGap, options.flowBypassSpace),
         y,
         width: nodeWidth,
         height: nodeHeight,
@@ -899,14 +1047,92 @@ function flowColumnUsesFullHeight(entries) {
   ));
 }
 
-function layoutFlowLinks(nodes, links, linkUnit, portGap) {
+function alignFlowInterviewRoutesByOutcome(nodes, chartHeight) {
+  const interviewNodes = nodes.filter((node) => node.phase === "interview" && node.applicationId);
+  if (!interviewNodes.length) return;
+
+  const nodesByApplication = new Map();
+  interviewNodes.forEach((node) => {
+    const laneNodes = nodesByApplication.get(node.applicationId) || [];
+    laneNodes.push(node);
+    nodesByApplication.set(node.applicationId, laneNodes);
+  });
+
+  const lanes = [...nodesByApplication.entries()]
+    .map(([applicationId, laneNodes]) => ({
+      applicationId,
+      nodes: laneNodes,
+      height: Math.max(...laneNodes.map((node) => node.height)),
+      outcome: laneNodes[0].flowOutcome,
+      anchorY: Math.min(...laneNodes.map((node) => node.y)),
+    }))
+    .sort((a, b) => a.anchorY - b.anchorY || a.applicationId.localeCompare(b.applicationId));
+
+  const rejected = lanes.filter((lane) => lane.outcome === "rejected");
+  const abandoned = lanes.filter((lane) => ["abandoned", "withdrawn"].includes(lane.outcome));
+  const active = lanes.filter((lane) => !rejected.includes(lane) && !abandoned.includes(lane));
+  // Keep the outer edges clear for direct Submitted → outcome routes. Interview
+  // lanes are ordered by outcome, but share one evenly spaced interior sequence.
+  const top = 24 + FLOW_INTERVIEW_EDGE_INSET;
+  const bottom = chartHeight - 30 - FLOW_INTERVIEW_EDGE_INSET;
+  const laneGap = FLOW_INTERVIEW_LANE_GAP;
+  const orderedLanes = [...rejected, ...active, ...abandoned];
+  const routesHeight = orderedLanes.reduce((sum, lane) => sum + lane.height, 0)
+    + Math.max(0, orderedLanes.length - 1) * laneGap;
+  let cursor = top + Math.max(0, (bottom - top - routesHeight) / 2);
+
+  orderedLanes.forEach((lane) => {
+    positionFlowInterviewLane(lane, cursor);
+    cursor += lane.height + laneGap;
+  });
+}
+
+function positionFlowInterviewLane(lane, y) {
+  const centerY = y + lane.height / 2;
+  lane.nodes.forEach((node) => {
+    node.y = centerY - node.height / 2;
+  });
+}
+
+function alignFlowInterviewContinuations(nodes) {
+  const continuationNodes = nodes.filter((node) => (
+    node.phase === "interview" && node.interviewRound > 2 && node.applicationId
+  ));
+  if (!continuationNodes.length) return;
+
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  continuationNodes.forEach((node) => {
+    const interviewTwo = nodeById.get(`interview:2:${node.applicationId}`);
+    if (!interviewTwo) return;
+
+    const interviewTwoCenterY = interviewTwo.y + interviewTwo.height / 2;
+    node.y = interviewTwoCenterY - node.height / 2;
+  });
+}
+
+function layoutFlowLinks(nodes, links, linkUnit, portGap, chartHeight, activeLinkStyle) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const progressNode = nodes.find((node) => node.id === "in_progress");
   const laidOutLinks = links.map((link) => ({
     ...link,
     source: nodeById.get(link.sourceId),
     target: nodeById.get(link.targetId),
-    width: flowLinkWidth(link, linkUnit),
+    width: flowLinkWidth(link, linkUnit, activeLinkStyle),
   }));
+  laidOutLinks.forEach((link) => {
+    if (!progressNode || link.source.phase !== "submitted" || link.target.phase !== "outcome") return;
+    link.progressBypassY = flowDirectOutcomeBypassY(link, progressNode, chartHeight);
+    const sourceX = link.source.x + link.source.width;
+    const targetX = link.target.x;
+    link.progressBypassStartX = Math.min(
+      targetX - 96,
+      sourceX + Math.max(36, Math.min(72, (progressNode.x - sourceX) * 0.22))
+    );
+    link.progressBypassEndX = Math.max(
+      link.progressBypassStartX + 96,
+      Math.min(targetX - 48, progressNode.x + progressNode.width + 48)
+    );
+  });
   laidOutLinks.forEach((link) => { link.color = flowLinkColor(link); });
 
   nodes.forEach((node) => {
@@ -952,6 +1178,8 @@ function flowLinkColor(link) {
 }
 
 function renderFlowLink(link) {
+  if (Number.isFinite(link.progressBypassY)) return renderFlowProgressBypassLink(link);
+
   const curve = Math.max(56, (link.target.x - (link.source.x + link.source.width)) * 0.34);
   return `
     <path
@@ -964,10 +1192,41 @@ function renderFlowLink(link) {
   `;
 }
 
+function flowDirectOutcomeBypassY(link, progressNode, chartHeight) {
+  const routeAboveProgress = link.target.id === "rejected" || link.target.id === "offer_accepted"
+    ? true
+    : link.target.id === "abandoned" || link.target.id === "withdrawn"
+      ? false
+      : link.target.y + link.target.height / 2 < progressNode.y + progressNode.height / 2;
+  const edgeClearance = Math.max(30, link.width / 2 + 10);
+
+  return routeAboveProgress
+    ? edgeClearance
+    : chartHeight - edgeClearance;
+}
+
+function renderFlowProgressBypassLink(link) {
+  const sourceX = link.source.x + link.source.width;
+  const targetX = link.target.x;
+  const progressBypassY = link.progressBypassY;
+  const startControlX = link.progressBypassStartX;
+  const endControlX = link.progressBypassEndX;
+
+  return `
+    <path
+      class="flow-link"
+      d="M ${sourceX} ${link.sourceY} C ${startControlX} ${progressBypassY}, ${endControlX} ${progressBypassY}, ${targetX} ${link.targetY}"
+      fill="none"
+      stroke="${link.color}"
+      stroke-width="${link.width}"
+    ><title>${escapeHtml(flowLinkTitle(link))}</title></path>
+  `;
+}
+
 function flowLinkTitle(link) {
   const names = link.applications
     .slice(0, 4)
-    .map((app) => `${app.companyName} — ${app.jobTitle}`)
+    .map((app) => app.jobTitle ? `${app.companyName} — ${app.jobTitle}` : app.companyName)
     .join("\n");
   const remaining = link.applications.length - 4;
   const suffix = remaining > 0 ? "\nand more" : "";
@@ -976,19 +1235,23 @@ function flowLinkTitle(link) {
 
 function renderFlowNode(node) {
   const labelLines = flowNodeLabelLines(node.label);
+  const roomy = node.flowPresentation === "roomy";
+  const comfortable = node.flowPresentation === "comfortable";
+  const labelLineHeight = roomy ? 33 : comfortable ? 19 : 14;
   const labelY = node.y + (node.detail
-    ? Math.round(node.height * 0.42)
+    ? Math.round(node.height * (roomy ? 0.38 : comfortable ? 0.4 : 0.42))
     : labelLines.length === 1
-      ? Math.round(node.height * 0.6)
+      ? Math.round(node.height * (roomy ? 0.62 : 0.6))
       : Math.round(node.height * 0.35));
-  const detailY = node.y + node.height - 7;
+  const detailY = node.y + node.height - (roomy ? 22 : comfortable ? 11 : 7);
+  const countY = node.y + (roomy ? 40 : comfortable ? 22 : 17);
 
   return `
     <g>
-      <rect class="flow-node" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="8" />
-      ${labelLines.map((line, index) => `<text class="flow-node-label" x="${node.x + 10}" y="${labelY + index * 14}">${escapeHtml(line)}</text>`).join("")}
-      ${node.detail ? `<text class="flow-node-detail" x="${node.x + 10}" y="${detailY}">${escapeHtml(truncateLabel(node.detail, 17))}</text>` : ""}
-      <text class="flow-node-count" x="${node.x + node.width - 10}" y="${node.y + 17}" text-anchor="end">${node.value}</text>
+      <rect class="flow-node" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${roomy ? 14 : 8}" />
+      ${labelLines.map((line, index) => `<text class="flow-node-label" x="${node.x + (roomy ? 22 : 10)}" y="${labelY + index * labelLineHeight}">${escapeHtml(line)}</text>`).join("")}
+      ${node.detail ? `<text class="flow-node-detail" x="${node.x + (roomy ? 22 : 10)}" y="${detailY}">${escapeHtml(truncateLabel(node.detail, 17))}</text>` : ""}
+      <text class="flow-node-count" x="${node.x + node.width - (roomy ? 22 : 10)}" y="${countY}" text-anchor="end">${node.value}</text>
       <title>${escapeHtml(`${node.label}${node.detail ? ` — ${node.detail}` : ""}: ${node.value}`)}</title>
     </g>
   `;
