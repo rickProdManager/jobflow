@@ -19,6 +19,8 @@ Version labels are human-readable project milestones. GitHub releases or tags ar
 - Route direct Submitted-to-Rejected and Submitted-to-Abandoned paths as single outer arcs along the map’s top and bottom edges, reserving an interior lane for interviews as the pipeline grows.
 - Adapt the one-page Flow map to the screen and visible interview-route density: roomy screens with a small pipeline use larger boxes and type, while denser or narrower views automatically compact.
 - Increase the visual weight of active Flow ribbons, making Submitted-to-In progress and interview-to-interview paths easier to follow.
+- Sort rejected interview routes from the fewest interview rounds to the most, preventing longer routes from crossing shorter rejected routes.
+- Keep the public build’s four-hour session idle timeout under smoke-test coverage, so a longer private runtime setting cannot be committed accidentally.
 
 ## 2026-07-28
 

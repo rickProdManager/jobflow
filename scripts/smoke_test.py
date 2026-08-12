@@ -29,6 +29,7 @@ import server  # noqa: E402
 TEST_PASSWORD = "this is a local test passphrase"
 TIMEOUT = 5
 AUTH_IDLE_TIMEOUT_SECONDS = int(server.SESSION_IDLE_TIMEOUT.total_seconds())
+PUBLIC_SESSION_IDLE_TIMEOUT_SECONDS = 4 * 60 * 60
 
 
 class SmokeTestError(Exception):
@@ -41,6 +42,8 @@ class QuietHandler(server.Handler):
 
 
 def main():
+    assert_public_session_timeout_defaults()
+
     with tempfile.TemporaryDirectory() as tmp:
         configure_temp_database(tmp)
         server.init_db()
@@ -66,6 +69,18 @@ def configure_temp_database(tmp):
     server.DATA_DIR = temp_root / "data"
     server.DB_PATH = server.DATA_DIR / "job-tracker.sqlite"
     server.DOCUMENTS_DIR = server.DATA_DIR / "documents"
+
+
+def assert_public_session_timeout_defaults():
+    expect(
+        AUTH_IDLE_TIMEOUT_SECONDS == PUBLIC_SESSION_IDLE_TIMEOUT_SECONDS,
+        "Public source must retain its four-hour session idle timeout.",
+    )
+    config_source = (ROOT / "js" / "config.js").read_text(encoding="utf-8")
+    expect(
+        "const DEFAULT_SESSION_IDLE_TIMEOUT_SECONDS = 4 * 60 * 60;" in config_source,
+        "Public client fallback must retain its four-hour session idle timeout.",
+    )
 
 
 def assert_private_storage_permissions():

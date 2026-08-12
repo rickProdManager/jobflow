@@ -1068,7 +1068,12 @@ function alignFlowInterviewRoutesByOutcome(nodes, chartHeight) {
     }))
     .sort((a, b) => a.anchorY - b.anchorY || a.applicationId.localeCompare(b.applicationId));
 
-  const rejected = lanes.filter((lane) => lane.outcome === "rejected");
+  // A rejected route with fewer interview steps must sit above a longer rejected
+  // route. That lets every later interview connector continue below the shorter
+  // route instead of crossing it.
+  const rejected = lanes
+    .filter((lane) => lane.outcome === "rejected")
+    .sort(compareFlowInterviewLanes);
   const abandoned = lanes.filter((lane) => ["abandoned", "withdrawn"].includes(lane.outcome));
   const active = lanes.filter((lane) => !rejected.includes(lane) && !abandoned.includes(lane));
   // Keep the outer edges clear for direct Submitted → outcome routes. Interview
@@ -1085,6 +1090,12 @@ function alignFlowInterviewRoutesByOutcome(nodes, chartHeight) {
     positionFlowInterviewLane(lane, cursor);
     cursor += lane.height + laneGap;
   });
+}
+
+function compareFlowInterviewLanes(left, right) {
+  return left.nodes.length - right.nodes.length
+    || left.anchorY - right.anchorY
+    || left.applicationId.localeCompare(right.applicationId);
 }
 
 function positionFlowInterviewLane(lane, y) {
