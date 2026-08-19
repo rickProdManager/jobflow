@@ -1248,7 +1248,8 @@ function renderFlowNode(node) {
   const labelLines = flowNodeLabelLines(node.label);
   const roomy = node.flowPresentation === "roomy";
   const comfortable = node.flowPresentation === "comfortable";
-  const labelLineHeight = roomy ? 33 : comfortable ? 19 : 14;
+  const labelLineHeight = roomy ? 33 : comfortable ? 22 : 17;
+  const showsCount = node.phase !== "interview";
   const labelY = node.y + (node.detail
     ? Math.round(node.height * (roomy ? 0.38 : comfortable ? 0.4 : 0.42))
     : labelLines.length === 1
@@ -1262,7 +1263,7 @@ function renderFlowNode(node) {
       <rect class="flow-node" x="${node.x}" y="${node.y}" width="${node.width}" height="${node.height}" rx="${roomy ? 14 : 8}" />
       ${labelLines.map((line, index) => `<text class="flow-node-label" x="${node.x + (roomy ? 22 : 10)}" y="${labelY + index * labelLineHeight}">${escapeHtml(line)}</text>`).join("")}
       ${node.detail ? `<text class="flow-node-detail" x="${node.x + (roomy ? 22 : 10)}" y="${detailY}">${escapeHtml(truncateLabel(node.detail, 17))}</text>` : ""}
-      <text class="flow-node-count" x="${node.x + node.width - (roomy ? 22 : 10)}" y="${countY}" text-anchor="end">${node.value}</text>
+      ${showsCount ? `<text class="flow-node-count" x="${node.x + node.width - (roomy ? 22 : 10)}" y="${countY}" text-anchor="end">${node.value}</text>` : ""}
       <title>${escapeHtml(`${node.label}${node.detail ? ` — ${node.detail}` : ""}: ${node.value}`)}</title>
     </g>
   `;

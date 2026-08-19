@@ -15,6 +15,7 @@ function bindEvents() {
   document.getElementById("applicationForm").addEventListener("submit", saveApplication);
   document.getElementById("activityForm").addEventListener("submit", saveActivity);
   document.getElementById("activityType").addEventListener("change", updateActivityTypeFields);
+  document.getElementById("interviewScheduledFor").addEventListener("input", updateActivityTypeFields);
   document.getElementById("taskForm").addEventListener("submit", saveTask);
   document.getElementById("taskCompletionForm").addEventListener("submit", saveTaskCompletion);
   document.getElementById("applicationPath").addEventListener("change", updateConditionalPathFields);
@@ -129,8 +130,6 @@ function openApplicationDialog(app = null) {
 }
 
 function openActivityDialog(applicationId, activity = null) {
-  document.getElementById("activityDialogTitle").textContent = activity ? "Edit activity" : "Add activity";
-  document.getElementById("activitySubmitButton").textContent = activity ? "Save activity" : "Add activity";
   document.getElementById("activityId").value = activity?.id || "";
   document.getElementById("activityApplicationId").value = applicationId;
   document.getElementById("activityType").value = activity?.type || "application_submitted";
@@ -145,10 +144,30 @@ function updateActivityTypeFields() {
   const isInterviewScheduled = document.getElementById("activityType").value === "interview_scheduled";
   const scheduledForField = document.getElementById("interviewScheduledForField");
   const scheduledForInput = document.getElementById("interviewScheduledFor");
+  const reschedule = pendingInterviewReschedule();
+  const isEditing = Boolean(document.getElementById("activityId").value);
+  const dialogTitle = document.getElementById("activityDialogTitle");
+  const submitButton = document.getElementById("activitySubmitButton");
+  const rescheduleHint = document.getElementById("interviewRescheduleHint");
 
   scheduledForField.hidden = !isInterviewScheduled;
   scheduledForInput.required = isInterviewScheduled;
   document.getElementById("occurredAtLabel").textContent = isInterviewScheduled ? "Scheduled on" : "Date done";
+
+  dialogTitle.textContent = reschedule ? "Reschedule interview" : (isEditing ? "Edit activity" : "Add activity");
+  submitButton.textContent = reschedule ? "Save reschedule" : (isEditing ? "Save activity" : "Add activity");
+  rescheduleHint.hidden = !reschedule;
+  rescheduleHint.textContent = reschedule
+    ? `Saving will record that the interview moved from ${formatDate(reschedule.previousScheduledFor)} to ${formatDate(reschedule.scheduledFor)}.`
+    : "";
+}
+
+function pendingInterviewReschedule() {
+  const activityId = document.getElementById("activityId").value;
+  const existing = state.events.find((event) => event.id === activityId);
+  const type = document.getElementById("activityType").value;
+  const scheduledFor = document.getElementById("interviewScheduledFor").value;
+  return interviewRescheduleFor(existing, type, scheduledFor);
 }
 
 function openTaskDialog(applicationId) {
@@ -347,6 +366,7 @@ async function saveActivity(event) {
   const scheduledFor = type === "interview_scheduled" ? document.getElementById("interviewScheduledFor").value : "";
   const description = document.getElementById("activityDescription").value.trim();
   const now = new Date().toISOString();
+  const reschedule = interviewRescheduleFor(existing, type, scheduledFor);
 
   const duplicate = allowsMultipleActivities(type)
     ? null
@@ -371,6 +391,15 @@ async function saveActivity(event) {
   };
 
   await put("events", activity);
+  if (reschedule) {
+    await put("events", createInterviewRescheduleActivity({
+      applicationId,
+      interviewEventId: id,
+      previousScheduledFor: reschedule.previousScheduledFor,
+      scheduledFor,
+      now,
+    }));
+  }
   if (!existing) {
     await maybeGenerateReminder(activity);
   }
@@ -382,7 +411,13 @@ async function saveActivity(event) {
 }
 
 async function deleteActivity(activity) {
-  await remove("events", activity.id);
+  const relatedReschedules = activity.type === "interview_scheduled"
+    ? state.events.filter((event) => event.type === "interview_rescheduled" && event.interviewEventId === activity.id)
+    : [];
+  await Promise.all([
+    remove("events", activity.id),
+    ...relatedReschedules.map((event) => remove("events", event.id)),
+  ]);
   await refreshApplicationStage(activity.applicationId);
   await loadAll();
   render();
@@ -401,7 +436,38 @@ function isSingleInstanceActivity(type) {
 }
 
 function allowsMultipleActivities(type) {
-  return ["interview_scheduled", "interview_completed"].includes(type);
+  return ["interview_scheduled", "interview_completed", "interview_rescheduled"].includes(type);
+}
+
+function interviewRescheduleFor(existing, type, scheduledFor) {
+  if (
+    existing?.type !== "interview_scheduled" ||
+    type !== "interview_scheduled" ||
+    !existing.scheduledFor ||
+    !scheduledFor ||
+    existing.scheduledFor === scheduledFor
+  ) return null;
+
+  return {
+    previousScheduledFor: existing.scheduledFor,
+    scheduledFor,
+  };
+}
+
+function createInterviewRescheduleActivity({ applicationId, interviewEventId, previousScheduledFor, scheduledFor, now }) {
+  return {
+    id: crypto.randomUUID(),
+    applicationId,
+    type: "interview_rescheduled",
+    title: "Interview rescheduled",
+    description: `Interview date moved from ${formatDate(previousScheduledFor)} to ${formatDate(scheduledFor)}.`,
+    occurredAt: toDateInput(new Date()),
+    scheduledFor,
+    previousScheduledFor,
+    interviewEventId,
+    createdAt: now,
+    source: "manual",
+  };
 }
 
 async function saveTask(event) {

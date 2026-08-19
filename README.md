@@ -6,6 +6,8 @@ The app runs locally on your machine, stores data in SQLite, and does not requir
 
 This project was built by Ricardo Gonzalez with assistance from OpenAI Codex.
 
+For a plain-language walkthrough, use the in-app **Guide** section or read the [User Guide](USER_GUIDE.md).
+
 ## Features
 
 - Track job applications with company, role, location, job URL, work mode, salary range, and current status.
@@ -104,6 +106,7 @@ Stop the server with `Ctrl-C` in the terminal where it is running.
 ├── DATABASE_SCHEMA.md      # Database and API/storage details
 ├── LICENSE.md              # MIT License
 ├── SECURITY.md             # Local security policy
+├── USER_GUIDE.md           # Plain-language instructions for using the app
 ├── js/
 │   ├── analytics.js        # Analytics views and charts
 │   ├── actions.js          # Dialog handling and mutations

@@ -707,11 +707,11 @@ h3 {
 }
 
 .flow-chart-detailed .flow-node-label {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .flow-chart-detailed .flow-node-detail {
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .flow-link {
@@ -747,19 +747,31 @@ h3 {
 }
 
 .flow-chart-detailed .flow-node-count {
+  font-size: 14px;
+}
+
+.flow-chart-fit.flow-chart-compact .flow-node-label {
+  font-size: 14px;
+}
+
+.flow-chart-fit.flow-chart-compact .flow-node-detail {
+  font-size: 11px;
+}
+
+.flow-chart-fit.flow-chart-compact .flow-node-count {
   font-size: 12px;
 }
 
 .flow-chart-fit.flow-chart-comfortable .flow-node-label {
-  font-size: 12px;
+  font-size: 16px;
 }
 
 .flow-chart-fit.flow-chart-comfortable .flow-node-detail {
-  font-size: 10px;
+  font-size: 13px;
 }
 
 .flow-chart-fit.flow-chart-comfortable .flow-node-count {
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .flow-chart-fit.flow-chart-roomy .flow-node-label {
@@ -841,6 +853,150 @@ h3 {
 
 .activity-fields {
   align-items: end;
+}
+
+.guide-hero {
+  align-items: center;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  margin-bottom: 18px;
+}
+
+.guide-hero h3 {
+  font-size: 1.18rem;
+}
+
+.guide-hero p:last-child,
+.guide-card p:last-child {
+  margin-bottom: 0;
+}
+
+.guide-steps {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.guide-steps li {
+  align-items: baseline;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 62px 1fr;
+  padding-bottom: 10px;
+}
+
+.guide-steps li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.guide-steps strong,
+.guide-number {
+  color: var(--green);
+}
+
+.guide-steps span {
+  color: var(--muted);
+}
+
+.guide-grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guide-card {
+  min-height: 0;
+}
+
+.guide-number {
+  font-size: 0.8rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.guide-list {
+  color: var(--muted);
+  margin: 12px 0 0;
+  padding-left: 20px;
+}
+
+.guide-list li + li {
+  margin-top: 7px;
+}
+
+.guide-list strong {
+  color: var(--ink);
+}
+
+.guide-reference {
+  margin-top: 18px;
+}
+
+.guide-reference > h3 {
+  font-size: 1.18rem;
+}
+
+.guide-reference details {
+  border-top: 1px solid var(--line);
+  padding: 14px 0;
+}
+
+.guide-reference details:last-child {
+  padding-bottom: 0;
+}
+
+.guide-reference summary {
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 760;
+}
+
+.guide-detail-copy {
+  color: var(--muted);
+  margin-top: 12px;
+}
+
+.guide-detail-copy p:last-child {
+  margin-bottom: 0;
+}
+
+.guide-table-wrapper {
+  margin-top: 14px;
+  overflow-x: auto;
+}
+
+.guide-table {
+  border-collapse: collapse;
+  min-width: 690px;
+  text-align: left;
+  width: 100%;
+}
+
+.guide-table th,
+.guide-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 10px 12px;
+  vertical-align: top;
+}
+
+.guide-table thead th {
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.guide-table tbody th {
+  min-width: 164px;
+}
+
+.guide-table td {
+  color: var(--muted);
 }
 
 .activity-fields input,
@@ -1529,7 +1685,12 @@ textarea {
   .form-grid,
   .analytics-controls,
   .panel .document-coverage-grid,
+  .guide-grid,
   .salary-range-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .guide-hero {
     grid-template-columns: 1fr;
   }
 

@@ -6,6 +6,20 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-08-18
+
+### Changed
+
+- Hide the redundant always-one count from individual interview boxes, while retaining counts on shared Flow-map stages.
+- Increase compact and detailed Flow-map typography so stage labels and company aliases remain legible as routes grow.
+- Turn changes to an existing interview date into explicit reschedule entries, preserving the prior and new dates in the application timeline without adding a second interview round to the Flow map.
+- Add an in-app Guide and shareable plain-language User Guide covering applications, activities, interviews, next actions, analytics, backups, and privacy.
+- Expand the Guide with a complete activity reference, stage and date rules, analytics definitions, sharing guidance, and troubleshooting.
+
+### Privacy
+
+- Remove built-in sample application data, including seeded company, referral, document, and follow-up details.
+
 ## 2026-08-06
 
 ### Added
