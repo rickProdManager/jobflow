@@ -761,10 +761,14 @@ function buildApplicationFlow(applications, options = {}) {
   const nodeById = new Map();
   const linkById = new Map();
   const companyAliases = options.anonymizeCompanies ? flowCompanyAliases(applications) : null;
+  let currentInProgressCount = 0;
 
   applications.forEach((app) => {
     const displayCompany = flowCompanyDisplayName(app, companyAliases);
     const route = applicationFlowRoute(app, { displayCompany });
+    const reachesInProgress = route.some((node) => node.id === "in_progress");
+    const hasFinalOutcome = route.some((node) => node.phase === "outcome");
+    if (reachesInProgress && !hasFinalOutcome) currentInProgressCount += 1;
     route.forEach((node) => nodeById.set(node.id, node));
 
     route.slice(1).forEach((target, index) => {
@@ -797,7 +801,7 @@ function buildApplicationFlow(applications, options = {}) {
     return {
       ...node,
       column: flowNodeColumn(node, maximumInterviewStep),
-      value: Math.max(incoming, outgoing),
+      value: node.id === "in_progress" ? currentInProgressCount : Math.max(incoming, outgoing),
     };
   });
 
