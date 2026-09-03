@@ -1297,6 +1297,7 @@ function renderLineChart(counts) {
   const width = 520;
   const height = 180;
   const padding = 34;
+  const visibleLabelIndexes = lineChartLabelIndexes(entries.length, width, padding);
   const max = Math.max(1, ...entries.map(([, value]) => value));
   const points = entries.map(([, value], index) => {
     const x = padding + (index * (width - padding * 2)) / Math.max(1, entries.length - 1);
@@ -1311,10 +1312,23 @@ function renderLineChart(counts) {
       <line x1="${padding}" y1="${padding}" x2="${padding}" y2="${height - padding}" stroke="#d9dedb" />
       <path d="${path}" fill="none" stroke="#2f6f5e" stroke-width="3" />
       ${points.map((point, index) => `
-        <circle cx="${point.x}" cy="${point.y}" r="5" fill="#315b8f" />
-        <text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-value">${point.value}</text>
-        <text x="${point.x}" y="${height - 10}" text-anchor="middle" class="chart-label">${formatShortDate(entries[index][0])}</text>
+        <g>
+          <title>${formatShortDate(entries[index][0])}: ${point.value} submission${point.value === 1 ? "" : "s"}</title>
+          <circle cx="${point.x}" cy="${point.y}" r="5" fill="#315b8f" />
+          <text x="${point.x}" y="${point.y - 10}" text-anchor="middle" class="chart-value">${point.value}</text>
+          ${visibleLabelIndexes.has(index) ? `<text x="${point.x}" y="${height - 10}" text-anchor="middle" class="chart-label">${formatShortDate(entries[index][0])}</text>` : ""}
+        </g>
       `).join("")}
     </svg>
   `;
+}
+
+function lineChartLabelIndexes(entryCount, width, padding) {
+  const minimumLabelSpacing = 64;
+  const maximumLabels = Math.max(2, Math.floor((width - padding * 2) / minimumLabelSpacing) + 1);
+  const labelCount = Math.min(entryCount, maximumLabels);
+
+  return new Set(Array.from({ length: labelCount }, (_, index) => (
+    Math.round((index * (entryCount - 1)) / Math.max(1, labelCount - 1))
+  )));
 }
