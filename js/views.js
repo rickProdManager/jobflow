@@ -11,7 +11,6 @@ function render() {
 
   renderDashboard();
   renderApplications();
-  renderReminders();
   renderAnalytics();
   renderFlowMap();
   renderGuide();
@@ -20,7 +19,6 @@ function render() {
 
 function renderDashboard() {
   const active = state.applications.filter((app) => !isClosed(applicationStage(app)));
-  const remindersDue = dueTasks().length;
   const interviewEvents = state.events.filter((event) => ["interview_scheduled", "interview_completed"].includes(event.type));
   const interviews = interviewEvents.length;
   const stale = active.filter((app) => daysSince(lastActivityDate(app.id)) >= STALE_AFTER_DAYS).length;
@@ -34,7 +32,6 @@ function renderDashboard() {
     </div>
     <div class="stats-grid">
       ${dashboardStatCard(active.length, "Active applications", "active")}
-      ${dashboardStatCard(remindersDue, "Due follow-ups", "reminders")}
       ${dashboardStatCard(interviews, "Interview events", "interviews")}
       ${dashboardStatCard(stale, "Stale applications", "stale")}
     </div>
@@ -121,29 +118,6 @@ function renderApplicationResults() {
   results.innerHTML = applicationListMarkup();
   bindCardActions();
 }
-
-function renderReminders() {
-  const tasks = state.tasks.filter((task) => !task.completedAt);
-
-  document.getElementById("remindersView").innerHTML = `
-    <div class="page-header">
-      <div>
-        <p class="eyebrow">Future prompts</p>
-        <h2>Next Actions</h2>
-      </div>
-    </div>
-    <div class="reminder-list">
-      ${tasks.length ? tasks.map(renderReminder).join("") : `<p class="empty">No open next actions. Excellent breathing room.</p>`}
-    </div>
-  `;
-
-  document.querySelectorAll("[data-complete-task]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await handleTaskCompletionButton(button);
-    });
-  });
-}
-
 
 function renderAuthGate(auth = state.auth, message = "") {
   const isSetup = !auth.configured;
@@ -299,15 +273,31 @@ function renderSettings() {
       </div>
     </div>
     <div class="panel">
-      <p>Your tracker is persisted locally in SQLite at <strong>data/job-tracker.sqlite</strong>. Export a JSON backup whenever you want a portable copy.</p>
-      <div class="data-actions">
-        <button class="data-button export-button" id="exportButton" type="button">Export JSON</button>
+      <p>Your tracker is persisted locally in SQLite at <strong>data/job-tracker.sqlite</strong>. Use a private backup to restore Job Flow, or use a separately allowlisted brief for job-search analysis outside Job Flow.</p>
+      <div class="data-export-options">
+        <section class="data-export-option">
+          <div>
+            <h3>Full backup</h3>
+            <p>For restoring your complete applications and activities. It may contain notes, contact details, and document information, so keep it private.</p>
+          </div>
+          <button class="data-button export-button" id="exportButton" type="button">Export private backup</button>
+        </section>
+        <section class="data-export-option analysis-export-option">
+          <div>
+            <h3>Sanitized Brief</h3>
+            <p>Read-only Markdown for your own analysis or another tool. It contains only approved aggregate data and compact interview routes.</p>
+          </div>
+          <button class="data-button analysis-export-button" id="analysisExportButton" type="button">Export sanitized brief</button>
+          <p class="data-export-privacy">Excludes contacts, notes, documents, URLs, salaries, internal IDs, tasks, and free-form activity details. It cannot restore Job Flow.</p>
+        </section>
+      </div>
+      <div class="data-actions data-import-actions">
         <button class="data-button import-button" id="importButton" type="button">Import JSON</button>
         <span
           class="data-format-help"
           tabindex="0"
           aria-label="Required JSON format"
-          data-tooltip='Required JSON: { "applications": [...], "events": [...], "tasks": [...] }. Optional: "exportedAt". Import replaces current local data.'
+          data-tooltip='Required JSON: { "applications": [...], "events": [...], "exportedAt", "schemaVersion" }. Older backups with tasks are accepted; tasks are ignored. Import replaces current local data.'
         >?</span>
         <input id="importInput" type="file" accept="application/json" hidden />
       </div>
@@ -315,6 +305,7 @@ function renderSettings() {
   `;
 
   document.getElementById("exportButton").addEventListener("click", exportData);
+  document.getElementById("analysisExportButton").addEventListener("click", exportSanitizedBrief);
   document.getElementById("importButton").addEventListener("click", () => document.getElementById("importInput").click());
   document.getElementById("importInput").addEventListener("change", importData);
 }
@@ -333,12 +324,11 @@ function renderGuide() {
       <div>
         <p class="eyebrow">Simple workflow</p>
         <h3>Track the application, then record what actually happens.</h3>
-        <p>Create an application once. From there, use activities for submissions, replies, interviews, offers, and outcomes. The dashboard, next actions, timelines, and Flow map update from those records.</p>
+        <p>Create an application once. From there, use activities for submissions, replies, interviews, offers, and outcomes. The dashboard, timelines, and Flow map update from those records.</p>
       </div>
       <ol class="guide-steps" aria-label="Recommended workflow">
         <li><strong>Add</strong><span>Create the application and choose its path.</span></li>
         <li><strong>Record</strong><span>Add activities as each real step happens.</span></li>
-        <li><strong>Act</strong><span>Use Next Actions to keep follow-ups visible.</span></li>
         <li><strong>Review</strong><span>Use Analytics to understand the overall pipeline.</span></li>
       </ol>
     </section>
@@ -372,22 +362,21 @@ function renderGuide() {
 
       <section class="panel guide-card">
         <p class="guide-number">4</p>
-        <h3>Stay on top of next actions</h3>
-        <p>Use <strong>Next Action</strong> on an application to create a reminder with a due date and priority. Some useful activities also create a follow-up automatically, so check the <strong>Next Actions</strong> page regularly.</p>
-        <p>When the task is done, mark it complete and record the communication method and any useful notes.</p>
+        <h3>Keep the record current</h3>
+        <p>Use <strong>Activity</strong> to record a genuine follow-up, reply, interview, or outcome when it happens. This keeps the application history accurate in one place.</p>
       </section>
 
       <section class="panel guide-card">
         <p class="guide-number">5</p>
         <h3>Find and review applications</h3>
-        <p>On <strong>Applications</strong>, search by company or role and filter by stage. Open <strong>Details</strong> to review the timeline, documents, notes, and upcoming actions for one application.</p>
+        <p>On <strong>Applications</strong>, search by company or role and filter by stage. Open <strong>Details</strong> to review the timeline, documents, and notes for one application.</p>
         <p>The Dashboard highlights active, stale, and interview-related applications. Click a dashboard number to open the matching applications list.</p>
       </section>
 
       <section class="panel guide-card">
         <p class="guide-number">6</p>
         <h3>Use Analytics and the Flow map</h3>
-        <p>Analytics summarizes stages, sources, salary ranges, document coverage, and individual application timelines. Open the full Flow map for a visual route through the process.</p>
+        <p>Analytics summarizes stages, application paths, salary ranges, document coverage, and individual application timelines. Open the full Flow map for a visual route through the process.</p>
         <ul class="guide-list">
           <li><strong>Fit to one page:</strong> best for sharing or saving one complete image.</li>
           <li><strong>Scrollable review:</strong> best for examining a dense pipeline in detail.</li>
@@ -398,14 +387,14 @@ function renderGuide() {
       <section class="panel guide-card">
         <p class="guide-number">7</p>
         <h3>Back up your tracker</h3>
-        <p>Open <strong>Data</strong> and export JSON periodically. This saves applications, activities, and next actions. Importing a backup replaces the current tracker data, so export first if there is anything you may want to keep.</p>
+        <p>Open <strong>Data</strong> and export a private backup periodically. This saves applications and activities. Importing a backup replaces the current tracker data, so export first if there is anything you may want to keep.</p>
         <p>Uploaded document files and your unlock settings are not included in the JSON backup.</p>
       </section>
 
       <section class="panel guide-card">
         <p class="guide-number">8</p>
         <h3>Keep your data private</h3>
-        <p>Job Flow is local to your computer. Use <strong>Lock</strong> when stepping away, do not share raw backups, and use Company aliases before sharing a Flow-map image publicly.</p>
+        <p>Job Flow is local to your computer. Use <strong>Lock</strong> when stepping away, do not share raw backups, and use the read-only <strong>Export sanitized brief</strong> when you need a filtered file for review outside Job Flow or with an analysis tool.</p>
       </section>
     </div>
 
@@ -419,12 +408,12 @@ function renderGuide() {
           <table class="guide-table">
             <thead><tr><th>Activity</th><th>Use it when</th><th>What it changes</th></tr></thead>
             <tbody>
-              <tr><th>Application submitted</th><td>You have applied for the role.</td><td>Establishes the application timeline and can create a seven-day follow-up reminder.</td></tr>
-              <tr><th>Follow-up sent</th><td>You send a check-in after applying or after a conversation.</td><td>Records the outreach and can create a seven-day reminder.</td></tr>
-              <tr><th>Recruiter replied</th><td>A recruiter responds.</td><td>Records the response and can create a five-day next action.</td></tr>
-              <tr><th>Internal Contact Replied</th><td>A referrer, hiring contact, or employee responds.</td><td>Records the response and can create a five-day next action.</td></tr>
+              <tr><th>Application submitted</th><td>You have applied for the role.</td><td>Establishes the application timeline.</td></tr>
+              <tr><th>Follow-up sent</th><td>You send a check-in after applying or after a conversation.</td><td>Records the outreach in the timeline.</td></tr>
+              <tr><th>Recruiter replied</th><td>A recruiter responds.</td><td>Records the response in the timeline.</td></tr>
+              <tr><th>Internal Contact Replied</th><td>A referrer, hiring contact, or employee responds.</td><td>Records the response in the timeline.</td></tr>
               <tr><th>Interview scheduled</th><td>An interview has been arranged.</td><td>Adds the next numbered interview to the Flow map using its planned date.</td></tr>
-              <tr><th>Interview completed</th><td>The interview has taken place.</td><td>Records the completed conversation and can create a next-day thank-you reminder.</td></tr>
+              <tr><th>Interview completed</th><td>The interview has taken place.</td><td>Records the completed conversation.</td></tr>
               <tr><th>Thank-you sent</th><td>You send a thank-you note.</td><td>Keeps that outreach in the timeline.</td></tr>
               <tr><th>Offer received / accepted</th><td>You receive an offer or decide to accept it.</td><td>Marks the process as Offer or Accepted.</td></tr>
               <tr><th>Rejected / Abandoned</th><td>The employer declines, or the process has genuinely gone cold.</td><td>Closes the application and updates the Flow-map outcome.</td></tr>
@@ -444,17 +433,9 @@ function renderGuide() {
       </details>
 
       <details>
-        <summary>Automatic reminders and Next Actions</summary>
-        <div class="guide-detail-copy">
-          <p>Job Flow creates an automatic reminder only when the application remains open and it does not already have an open automatic reminder. It schedules follow-up seven days after an application submission or follow-up, five days after a recruiter or internal contact reply, and a thank-you reminder one day after an interview is completed.</p>
-          <p>Manual Next Actions are separate. Use them for preparation, deadlines, or any follow-up that needs a specific date. When completing a task, record the contact method and notes so the result stays with the application history.</p>
-        </div>
-      </details>
-
-      <details>
         <summary>How to read Analytics and application timelines</summary>
         <div class="guide-detail-copy">
-          <p>Choose a segment to group applications by Stage, application path, work mode, or document tailoring. The date range includes an application when its creation, an activity, or a next action falls inside the range.</p>
+          <p>Choose a segment to group applications by Stage, application path, work mode, or document tailoring. The date range includes an application when its creation or an activity falls inside the range.</p>
           <p>Outcome totals count applications, not every event. <strong>Interview scheduled</strong> means an interview was arranged; <strong>Interviewed</strong> means it was completed or the process is at a later stage.</p>
           <p>Application timelines are per-application routes. Scheduled interviews use the planned interview date. Completed interviews remain in the written activity timeline so the route stays readable.</p>
         </div>
@@ -472,7 +453,7 @@ function renderGuide() {
       <details>
         <summary>Backups, documents, and troubleshooting</summary>
         <div class="guide-detail-copy">
-          <p>Export JSON regularly from <strong>Data</strong>. Import replaces the current applications, activities, and next actions, so create a fresh export before importing anything. Uploaded document files and unlock settings are not in the JSON backup.</p>
+          <p>Export a private backup JSON regularly from <strong>Data</strong>. Import replaces the current applications and activities, so create a fresh export before importing anything. Older backups that contain tasks still import, but those tasks are ignored. Use the separate sanitized brief for allowlisted analysis; it is not importable. Uploaded document files and unlock settings are not in either export.</p>
           <p>If a search result looks wrong, clear the stage filter and search text. If analytics looks incomplete, clear its date range. If the app seems outdated after an update, reload the page. Use <strong>Lock</strong> whenever you step away from the computer.</p>
         </div>
       </details>
@@ -507,7 +488,6 @@ function renderApplicationCard(app) {
         </div>
         <div class="card-actions">
           <button class="mini-button" data-add-activity="${app.id}">Activity</button>
-          <button class="mini-button" data-add-task="${app.id}">Next Action</button>
           <button class="mini-button" data-edit-application="${app.id}">Edit</button>
           <button class="mini-button danger-button" data-delete-application="${app.id}">Delete</button>
         </div>
@@ -518,33 +498,12 @@ function renderApplicationCard(app) {
           ${pathDetail}
           ${app.notes ? `<p>${escapeHtml(app.notes)}</p>` : ""}
           ${documentSummary}
-          ${renderApplicationTasks(app)}
           <div class="timeline-list activity-section">
             ${appEvents.length ? renderTimeline(appEvents.slice(0, 5), { editable: true }) : `<p class="empty">No dated activity yet.</p>`}
           </div>
         </div>
       </details>
     </article>
-  `;
-}
-
-function renderReminder(task) {
-  const app = state.applications.find((item) => item.id === task.applicationId);
-  const overdue = new Date(task.dueAt) < startOfToday();
-  return `
-    <div class="reminder-row ${overdue ? "overdue" : ""}">
-      <div>
-        <h3>${escapeHtml(task.title)}</h3>
-        <p class="meta">
-          <span>Due ${formatDate(task.dueAt)}</span>
-          <span>${app ? `${escapeHtml(app.jobTitle)} at ${escapeHtml(app.companyName)}` : "Application removed"}</span>
-        </p>
-      </div>
-      <div class="task-actions">
-        <button class="mini-button" data-complete-task="${task.id}" data-task-outcome="done">Done</button>
-        <button class="mini-button muted-button" data-complete-task="${task.id}" data-task-outcome="unavailable">No contact</button>
-      </div>
-    </div>
   `;
 }
 
@@ -570,32 +529,6 @@ function renderDocumentSummary(app) {
         </div>
       `).join("")}
       ${app.documentNotes ? `<p class="document-notes">${escapeHtml(app.documentNotes)}</p>` : ""}
-    </div>
-  `;
-}
-
-function renderApplicationTasks(app) {
-  const openTasks = tasksFor(app.id).filter((task) => !task.completedAt).slice(0, 3);
-  if (!openTasks.length) return "";
-
-  return `
-    <div class="task-list">
-      ${openTasks.map((task) => `
-        <div class="task-chip ${new Date(task.dueAt) < startOfToday() ? "overdue" : ""}">
-          <div>
-            <strong>${escapeHtml(task.title)}</strong>
-            <p class="meta">
-              <span>${escapeHtml(task.type || "Next action")}</span>
-              <span>Due ${formatDate(task.dueAt)}</span>
-              <span>${escapeHtml(task.priority || "Normal")}</span>
-            </p>
-          </div>
-          <div class="task-actions">
-            <button class="mini-button" data-complete-task="${task.id}" data-task-outcome="done">Done</button>
-            <button class="mini-button muted-button" data-complete-task="${task.id}" data-task-outcome="unavailable">No contact</button>
-          </div>
-        </div>
-      `).join("")}
     </div>
   `;
 }
@@ -643,7 +576,7 @@ function timelineDateText(event) {
 }
 
 function visibleEvents(events) {
-  return events.filter((event) => event.type !== "job_saved");
+  return events.filter((event) => event.type !== "job_saved" && !isLegacyTaskSystemEvent(event));
 }
 
 function renderAttentionList() {

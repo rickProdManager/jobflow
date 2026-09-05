@@ -1,10 +1,10 @@
 # Job Tracker
 
-A local-first job application tracker for managing applications, documents, follow-ups, activity history, and analytics from a web browser.
+A local-first job application tracker for managing applications, documents, activity history, and analytics from a web browser.
 
 The app runs locally on your machine, stores data in SQLite, and does not require a cloud account or external service.
 
-This project was built by Ricardo Gonzalez with assistance from OpenAI Codex.
+This project was built by Ricardo Gonzalez.
 
 For a plain-language walkthrough, use the in-app **Guide** section or read the [User Guide](USER_GUIDE.md).
 
@@ -19,13 +19,10 @@ For a plain-language walkthrough, use the in-app **Guide** section or read the [
 - Store uploaded documents locally and retain their paths for later reference.
 - Maintain a dated activity timeline for each application.
 - Record activity types such as application submitted, follow-up sent, recruiter replies, Internal Contact Replied events, interviews, thank-you notes, offers, rejections, and abandoned applications.
-- Manage next actions and follow-up reminders.
-- Mark follow-ups as complete, including contact method and message/notes sent.
-- Mark follow-ups as unavailable when there is no contact information.
 - Edit and delete application activity.
-- View a dashboard with recent activity, stale applications, and next actions.
+- View a dashboard with recent activity, stale applications, and interviews.
 - Use analytics to inspect application status, submission trends, document coverage, salary ranges, flow diagrams, and per-application timelines.
-- Export and import portable JSON backups.
+- Export private JSON backups for restore or a sanitized Markdown brief for privacy-conscious external analysis.
 - Protect the local browser/API layer with a local unlock passphrase.
 
 ## Tech Stack
@@ -57,7 +54,7 @@ The server is implemented in `server.py`.
 
 The app uses a hybrid SQLite model:
 
-- application, activity, and task records are stored as JSON in SQLite
+- application and activity records are stored as JSON in SQLite
 - selected metadata fields are duplicated into SQLite columns for indexing and lookup
 - uploaded documents are stored on disk and as SQLite BLOBs
 - auth settings and sessions are stored in SQLite
@@ -125,24 +122,31 @@ Stop the server with `Ctrl-C` in the terminal where it is running.
 
 ## Data And Backups
 
-The Data tab can export a JSON backup shaped like:
+The Data tab has two export options:
+
+- **Export private backup** is the complete portable JSON backup for restore. It contains applications and activities and may include private notes, contact details, and document information.
+- **Export sanitized brief** is a read-only Markdown file for reviewing your search yourself or with another analysis tool. It is built from an explicit allowlist of aggregate values and compact interview routes. It cannot be imported.
+
+A full backup is shaped like:
 
 ```json
 {
+  "schemaVersion": 2,
   "exportedAt": "2026-06-16T00:00:00.000Z",
   "applications": [],
-  "events": [],
-  "tasks": []
+  "events": []
 }
 ```
 
-Importing JSON replaces the current local application, activity, and next-action data.
+Importing JSON replaces the current local application and activity data. Older backups that contain a `tasks` array are accepted, but those task records are ignored.
 
 Import/export does not include:
 
 - uploaded document BLOBs
 - local auth settings
 - active sessions
+
+The sanitized brief excludes names and contact details for people, raw notes and activity descriptions, document details, local paths, URLs, IDs, exact times, tasks, salary, and obsolete application fields. It retains only company names, job titles, date-only milestones, work mode, normalized stages, and application routes where needed for job-search analysis. A secondary privacy check stops the export if it detects obvious contact, URL, path, or phone-number patterns.
 
 For a deeper explanation, see [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
 
@@ -184,11 +188,9 @@ This software is provided as-is, without warranty of any kind. It is a personal 
 
 The author assumes no liability and is not responsible for data loss, security incidents, misuse, or damages arising from use of this software.
 
-This project was developed with AI assistance. Review, test, and validate the code before relying on it for any personal, professional, or sensitive workflow.
-
 ## Authorship And Third-Party Code
 
-This project was built by Ricardo Gonzalez with assistance from OpenAI Codex.
+This project was built by Ricardo Gonzalez.
 
 The CSS in this repository is project-specific app styling. It does not intentionally include copied third-party stylesheets, CSS frameworks, template code, or vendor CSS.
 

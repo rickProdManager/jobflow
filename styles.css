@@ -1585,6 +1585,48 @@ textarea {
   gap: 12px;
 }
 
+.data-export-options {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 18px;
+}
+
+.data-export-option {
+  background: #f7faf8;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.data-export-option h3,
+.data-export-option p {
+  margin: 0;
+}
+
+.data-export-option h3 {
+  font-size: 1rem;
+}
+
+.data-export-option p {
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+.data-export-option .data-export-privacy {
+  font-size: 0.86rem;
+  margin-top: -4px;
+}
+
+.data-import-actions {
+  border-top: 1px solid var(--line);
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
 .data-button {
   border: 0;
   border-radius: 8px;
@@ -1601,6 +1643,14 @@ textarea {
 
 .data-button.export-button:hover {
   background: var(--green-dark);
+}
+
+.data-button.analysis-export-button {
+  background: #466d88;
+}
+
+.data-button.analysis-export-button:hover {
+  background: #35576e;
 }
 
 .data-button.import-button {
@@ -1661,6 +1711,10 @@ textarea {
 }
 
 @media (max-width: 880px) {
+  .data-export-options {
+    grid-template-columns: 1fr;
+  }
+
   .app {
     grid-template-columns: 1fr;
   }

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Job Application Tracker</title>
-    <link rel="stylesheet" href="styles.css?v=guide-manual-v2" />
+    <link rel="stylesheet" href="styles.css?v=cleanup-sanitized-brief-v2" />
   </head>
   <body>
     <section id="authView" class="auth-screen"></section>
@@ -19,7 +19,6 @@
         <nav class="nav" aria-label="Main views">
           <button class="nav-button active" data-view="dashboard">Dashboard</button>
           <button class="nav-button" data-view="applications">Applications</button>
-          <button class="nav-button" data-view="reminders">Next Actions</button>
           <button class="nav-button" data-view="analytics">Analytics</button>
           <button class="nav-button" data-view="guide">Guide</button>
           <button class="nav-button" data-view="settings">Data</button>
@@ -27,17 +26,15 @@
 
         <button id="newApplicationButton" class="primary-button">+ Application</button>
         <button id="lockButton" class="lock-button" type="button">Lock</button>
-        <div class="sidebar-credit" aria-label="Built by Ricardo Gonzalez with assistance from OpenAI Codex">
+        <div class="sidebar-credit" aria-label="Built by Ricardo Gonzalez">
           <span>Built by</span>
           <strong>Ricardo Gonzalez</strong>
-          <span>with assistance from OpenAI Codex</span>
         </div>
       </aside>
 
       <main class="content">
         <section id="dashboardView" class="view active-view"></section>
         <section id="applicationsView" class="view"></section>
-        <section id="remindersView" class="view"></section>
         <section id="analyticsView" class="view"></section>
         <section id="flow-mapView" class="view"></section>
         <section id="guideView" class="view"></section>
@@ -240,119 +237,16 @@
       </form>
     </dialog>
 
-    <dialog id="taskDialog" class="dialog">
-      <form id="taskForm" method="dialog">
-        <div class="dialog-header">
-          <div>
-            <p class="eyebrow">Next action</p>
-            <h2>Add next action</h2>
-          </div>
-          <button type="button" class="icon-button" data-close-task-dialog aria-label="Close">x</button>
-        </div>
-
-        <input type="hidden" id="taskApplicationId" />
-        <div class="form-grid">
-          <label>
-            Next action
-            <input id="taskTitle" required placeholder="Follow up with recruiter" autocomplete="off" />
-          </label>
-          <label>
-            Due date
-            <input id="taskDueAt" type="date" required />
-          </label>
-          <label>
-            Priority
-            <select id="taskPriority">
-              <option>Normal</option>
-              <option>High</option>
-              <option>Low</option>
-            </select>
-          </label>
-          <label>
-            Type
-            <select id="taskType">
-              <option>Follow-up</option>
-              <option>Prepare</option>
-              <option>Research</option>
-              <option>Send document</option>
-              <option>Interview prep</option>
-              <option>Other</option>
-            </select>
-          </label>
-        </div>
-
-        <label>
-          Notes
-          <textarea id="taskNotes" rows="3"></textarea>
-        </label>
-
-        <div class="dialog-actions">
-          <button type="button" class="secondary-button" data-close-task-dialog>Cancel</button>
-          <button class="primary-button" type="submit">Add next action</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog id="taskCompletionDialog" class="dialog">
-      <form id="taskCompletionForm" method="dialog">
-        <div class="dialog-header">
-          <div>
-            <p class="eyebrow">Next action</p>
-            <h2>Complete next action</h2>
-          </div>
-          <button type="button" class="icon-button" data-close-task-completion-dialog aria-label="Close">x</button>
-        </div>
-
-        <input type="hidden" id="taskCompletionTaskId" />
-        <p class="dialog-context" id="taskCompletionContext"></p>
-        <div class="form-grid">
-          <label>
-            Activity logged
-            <select id="taskCompletionType">
-              <option value="follow_up_sent">Follow-up sent</option>
-              <option value="thank_you_sent">Thank-you sent</option>
-              <option value="next_action_completed">Completed next action</option>
-              <option value="note_added">Note added</option>
-            </select>
-          </label>
-          <label>
-            Date done
-            <input id="taskCompletionDate" type="date" required />
-          </label>
-          <label>
-            Contact method
-            <select id="taskCompletionMethod">
-              <option value="email_sent">Email sent</option>
-              <option value="linkedin_message">LinkedIn message</option>
-              <option value="phone_call">Phone call</option>
-              <option value="application_portal">Application portal</option>
-              <option value="other">Other contact</option>
-            </select>
-          </label>
-        </div>
-
-        <label>
-          Message or notes
-          <textarea id="taskCompletionNotes" rows="6" placeholder="Paste the email, LinkedIn message, or a short note about what was done."></textarea>
-        </label>
-
-        <div class="dialog-actions">
-          <button type="button" class="secondary-button" data-close-task-completion-dialog>Cancel</button>
-          <button class="primary-button" type="submit">Save completion</button>
-        </div>
-      </form>
-    </dialog>
-
-    <script src="js/config.js?v=activity-sort-v1"></script>
+    <script src="js/config.js?v=cleanup-sanitized-brief-v2"></script>
     <script src="js/session.js?v=activity-sort-v1"></script>
     <script src="js/router.js?v=guide-reschedule-v1"></script>
     <script src="js/utils.js?v=activity-sort-v1"></script>
-    <script src="js/models.js?v=activity-sort-v1"></script>
-    <script src="js/storage.js?v=activity-sort-v1"></script>
-    <script src="js/navigation.js?v=activity-sort-v1"></script>
-    <script src="js/actions.js?v=guide-reschedule-v1"></script>
-    <script src="js/views.js?v=guide-manual-v2"></script>
-    <script src="js/analytics.js?v=analytics-sort-v1"></script>
+    <script src="js/models.js?v=cleanup-sanitized-brief-v2"></script>
+    <script src="js/storage.js?v=cleanup-sanitized-brief-v2"></script>
+    <script src="js/navigation.js?v=cleanup-sanitized-brief-v2"></script>
+    <script src="js/actions.js?v=cleanup-sanitized-brief-v2"></script>
+    <script src="js/views.js?v=cleanup-sanitized-brief-v2"></script>
+    <script src="js/analytics.js?v=cleanup-sanitized-brief-v2"></script>
     <script src="app.js?v=activity-sort-v1"></script>
   </body>
 </html>

@@ -33,16 +33,12 @@ function lastActivitySortKey(app) {
 function applicationRankingEventsFor(applicationId) {
   return eventsFor(applicationId).filter((event) => (
     event.type !== "job_saved" &&
-    !isNextActionMenuEvent(event)
+    !isLegacyTaskSystemEvent(event)
   ));
 }
 
-function isNextActionMenuEvent(event) {
-  return (
-    event.source === "next_action" ||
-    event.type === "next_action_completed" ||
-    event.type === "next_action_unavailable"
-  );
+function isLegacyTaskSystemEvent(event) {
+  return ["next_action_completed", "next_action_unavailable"].includes(event.type);
 }
 
 function inferApplicationPath(app) {
@@ -160,10 +156,6 @@ function normalizeActivityLabel(value) {
   return text.includes("_") ? text.replace(/_/g, " ") : text;
 }
 
-function dueTasks() {
-  return state.tasks.filter((task) => !task.completedAt && new Date(task.dueAt) <= endOfToday());
-}
-
 function lastActivityDate(applicationId) {
   const events = eventsFor(applicationId);
   return events[0]?.occurredAt || state.applications.find((app) => app.id === applicationId)?.createdAt || toDateInput(new Date());
@@ -242,10 +234,6 @@ function submissionsByWeek(applications = state.applications, events = state.eve
     });
 
   return eventCounts;
-}
-
-function tasksFor(applicationId) {
-  return state.tasks.filter((task) => task.applicationId === applicationId);
 }
 
 function formatShortDate(dateString) {

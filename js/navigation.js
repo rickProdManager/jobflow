@@ -20,13 +20,6 @@ function navigateFromDashboard(target) {
   state.applicationIdsFilter = null;
   state.applicationFilterLabel = "";
 
-  if (target === "reminders") {
-    state.activeView = "reminders";
-    pushHistoryState();
-    render();
-    return;
-  }
-
   if (target === "active") {
     const ids = state.applications
       .filter((app) => !isClosed(applicationStage(app)))

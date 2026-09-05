@@ -20,6 +20,7 @@ from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TEST_TMP_ROOT = ROOT.parent / "tmp"
 sys.path.insert(0, str(ROOT))
 sys.dont_write_bytecode = True
 
@@ -44,10 +45,12 @@ class QuietHandler(server.Handler):
 def main():
     assert_public_session_timeout_defaults()
 
-    with tempfile.TemporaryDirectory() as tmp:
+    TEST_TMP_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=TEST_TMP_ROOT) as tmp:
         configure_temp_database(tmp)
         server.init_db()
         assert_private_storage_permissions()
+        assert_new_database_has_no_task_table()
 
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), QuietHandler)
         port = httpd.server_address[1]
@@ -94,6 +97,12 @@ def assert_private_storage_permissions():
     for path, mode in expected.items():
         actual = stat.S_IMODE(path.stat().st_mode)
         expect(actual == mode, f"{path} expected mode {oct(mode)}, got {oct(actual)}")
+
+
+def assert_new_database_has_no_task_table():
+    with server.connect() as db:
+        rows = db.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").fetchall()
+    expect(not rows, "fresh databases must not create the retired tasks table")
 
 
 class SmokeClient:
@@ -169,7 +178,10 @@ def run_checks(client):
         "createdAt": "2026-06-16",
         "updatedAt": "2026-06-16T00:00:00Z",
     }
-    expect_json(client, "/api/applications", 200, app, method="PUT", payload=app)
+    _, _, body = expect_status(client, "/api/applications", 200, method="PUT", payload=app)
+    saved_app = parse_json(body)
+    expect(saved_app["stage"] == "Applied", "new application was not normalized to Applied")
+    expect(saved_app["applicationPath"] == "direct", "new application did not receive a direct path")
 
     applications = parse_json(expect_status(client, "/api/applications", 200)[2])
     expect(any(item["id"] == app["id"] for item in applications), "created application was not returned")
@@ -187,6 +199,87 @@ def run_checks(client):
     saved_event = next((item for item in events if item["id"] == event["id"]), None)
     expect(saved_event and saved_event.get("title") == "Internal Contact Replied", "internal contact event label was not normalized")
     expect(saved_event and saved_event.get("scheduledFor") == "2026-06-20", "scheduled interview date was not preserved")
+
+    rejected = {
+        "id": "smoke-test-rejected",
+        "applicationId": app["id"],
+        "type": "rejected",
+        "occurredAt": "2026-06-17",
+        "createdAt": "2026-06-17T00:00:00Z",
+    }
+    expect_status(client, "/api/events", 200, method="PUT", payload=rejected)
+    expect_application_stage(client, app["id"], "Rejected")
+
+    note = {
+        "id": "smoke-test-note",
+        "applicationId": app["id"],
+        "type": "note_added",
+        "occurredAt": "2026-06-18",
+        "createdAt": "2026-06-18T00:00:00Z",
+    }
+    expect_status(client, "/api/events", 200, method="PUT", payload=note)
+    expect_application_stage(client, app["id"], "Rejected")
+
+    offer = {
+        "id": "smoke-test-offer",
+        "applicationId": app["id"],
+        "type": "offer_received",
+        "occurredAt": "2026-06-17",
+        "createdAt": "2026-06-17T01:00:00Z",
+    }
+    expect_status(client, "/api/events", 200, method="PUT", payload=offer)
+    expect_application_stage(client, app["id"], "Offer")
+    expect_status(client, f"/api/events/{offer['id']}", 200, method="DELETE")
+    expect_application_stage(client, app["id"], "Rejected")
+
+    expect_status(client, f"/api/events/{rejected['id']}", 200, method="DELETE")
+    expect_application_stage(client, app["id"], "Applied")
+
+    manual_terminal_app = {**app, "stage": "Rejected", "updatedAt": "2026-06-19T00:00:00Z"}
+    expect_status(client, "/api/applications", 200, method="PUT", payload=manual_terminal_app)
+    expect_application_stage(client, app["id"], "Rejected")
+    manual_events = parse_json(expect_status(client, "/api/events", 200)[2])
+    expect(
+        any(event["type"] == "rejected" and event.get("source") == "manual_stage" for event in manual_events),
+        "manual terminal stage did not create a matching terminal event",
+    )
+
+    legacy_app = {
+        "id": "legacy-import-application",
+        "companyName": "Legacy Co",
+        "jobTitle": "Legacy Role",
+        "stage": "Applied",
+        "applicationPath": "referral",
+        "source": "legacy source",
+        "fit": "high",
+        "excitement": "high",
+        "createdAt": "2026-06-10",
+        "updatedAt": "2026-06-10T00:00:00Z",
+    }
+    legacy_rejection = {
+        "id": "legacy-import-rejected",
+        "applicationId": legacy_app["id"],
+        "type": "rejected",
+        "occurredAt": "2026-06-11",
+        "createdAt": "2026-06-11T00:00:00Z",
+    }
+    expect_status(
+        client,
+        "/api/import",
+        200,
+        method="POST",
+        payload={
+            "applications": [legacy_app],
+            "events": [legacy_rejection],
+            "tasks": [{"id": "legacy-task", "applicationId": legacy_app["id"]}],
+        },
+    )
+    imported_apps = parse_json(expect_status(client, "/api/applications", 200)[2])
+    imported_app = imported_apps[0]
+    expect(imported_app["stage"] == "Rejected", "legacy import did not reconcile terminal stage")
+    expect(imported_app["applicationPath"] == "referral", "legacy import did not preserve application path")
+    expect(not {"source", "fit", "excitement"}.intersection(imported_app), "legacy obsolete application fields were retained")
+    expect_status(client, "/api/tasks", 404)
 
     expect_json(
         client,
@@ -220,7 +313,7 @@ def run_checks(client):
         payload={"password": TEST_PASSWORD, "totpCode": server.generate_totp(totp_secret)},
     )
     expect(status == 200, f"login failed: {body[:200]!r}")
-    expect_status(client, f"/api/applications/{app['id']}", 200, method="DELETE")
+    expect_status(client, f"/api/applications/{legacy_app['id']}", 200, method="DELETE")
     expect_json(client, "/api/applications", 200, [])
 
 
@@ -234,6 +327,13 @@ def expect_json(client, path, expected_status, expected_payload, method="GET", p
     _, _, body = expect_status(client, path, expected_status, method=method, payload=payload)
     actual_payload = parse_json(body)
     expect(actual_payload == expected_payload, f"{method} {path} returned {actual_payload!r}")
+
+
+def expect_application_stage(client, application_id, expected_stage):
+    applications = parse_json(expect_status(client, "/api/applications", 200)[2])
+    application = next((item for item in applications if item["id"] == application_id), None)
+    expect(application is not None, f"application {application_id} was not returned")
+    expect(application.get("stage") == expected_stage, f"expected {expected_stage}, got {application.get('stage')}")
 
 
 def parse_json(body):

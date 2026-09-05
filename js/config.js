@@ -11,7 +11,6 @@ const SESSION_TOUCH_INTERVAL_MS = 60 * 1000;
 const state = {
   applications: [],
   events: [],
-  tasks: [],
   activeView: "dashboard",
   search: "",
   stageFilter: "All",
@@ -32,7 +31,7 @@ const state = {
   },
 };
 
-const stores = ["applications", "events", "tasks"];
+const stores = ["applications", "events"];
 
 const stageOrder = [
   "Applied",
@@ -59,15 +58,5 @@ const eventLabels = {
   offer_accepted: "Offer accepted",
   rejected: "Rejected",
   abandoned_no_response: "Abandoned - no response",
-  next_action_completed: "Next action completed",
-  next_action_unavailable: "Follow-up unavailable",
   note_added: "Note added",
-};
-
-const taskCompletionMethodLabels = {
-  email_sent: "Email sent",
-  linkedin_message: "LinkedIn message",
-  phone_call: "Phone call",
-  application_portal: "Application portal",
-  other: "Other contact",
 };

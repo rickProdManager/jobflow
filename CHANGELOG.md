@@ -6,6 +6,20 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-09-05
+
+### Changed
+
+- Synchronize the stored application stage from terminal activity history on save, edit, delete, import, and startup repair, so application lists, analytics, Flow maps, and private backups agree.
+- Remove active Next Actions and follow-up reminder management while keeping genuine `Follow-up sent` activities available in history.
+- Remove unused application fit, excitement, and obsolete source fields; application path is the sole application-route field.
+- Replace the earlier analysis JSON with an allowlisted, non-importable `Export sanitized brief` Markdown file for external job-search analysis.
+- Add schema version 2 for private backups. Older backups with task, fit, excitement, or source values remain importable; obsolete values are ignored.
+
+### Privacy
+
+- Ensure sanitized briefs omit contacts, notes, document details, URLs, local paths, IDs, exact times, tasks, salary, and free-form activity details, with a second guard that blocks obvious private-data patterns.
+
 ## 2026-08-18
 
 ### Changed

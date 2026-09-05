@@ -16,8 +16,6 @@ function bindEvents() {
   document.getElementById("activityForm").addEventListener("submit", saveActivity);
   document.getElementById("activityType").addEventListener("change", updateActivityTypeFields);
   document.getElementById("interviewScheduledFor").addEventListener("input", updateActivityTypeFields);
-  document.getElementById("taskForm").addEventListener("submit", saveTask);
-  document.getElementById("taskCompletionForm").addEventListener("submit", saveTaskCompletion);
   document.getElementById("applicationPath").addEventListener("change", updateConditionalPathFields);
   document.getElementById("resumeFile").addEventListener("change", () => handleDocumentUpload("resumeFile", "resumeName", "resumePath"));
   document.getElementById("coverLetterFile").addEventListener("change", () => handleDocumentUpload("coverLetterFile", "coverLetterName", "coverLetterPath"));
@@ -30,13 +28,6 @@ function bindEvents() {
     button.addEventListener("click", () => document.getElementById("activityDialog").close());
   });
 
-  document.querySelectorAll("[data-close-task-dialog]").forEach((button) => {
-    button.addEventListener("click", () => document.getElementById("taskDialog").close());
-  });
-
-  document.querySelectorAll("[data-close-task-completion-dialog]").forEach((button) => {
-    button.addEventListener("click", () => document.getElementById("taskCompletionDialog").close());
-  });
 }
 
 async function lockTracker() {
@@ -78,19 +69,9 @@ function bindCardActions() {
     });
   });
 
-  document.querySelectorAll("[data-add-task]").forEach((button) => {
-    button.addEventListener("click", () => openTaskDialog(button.dataset.addTask));
-  });
-
-  document.querySelectorAll("[data-complete-task]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      await handleTaskCompletionButton(button);
-    });
-  });
-
   document.querySelectorAll("[data-delete-application]").forEach((button) => {
     button.addEventListener("click", async () => {
-      if (!confirm("Delete this application and its related events/next actions?")) return;
+      if (!confirm("Delete this application and its related activities?")) return;
       await deleteApplication(button.dataset.deleteApplication);
       await loadAll();
       render();
@@ -170,113 +151,6 @@ function pendingInterviewReschedule() {
   return interviewRescheduleFor(existing, type, scheduledFor);
 }
 
-function openTaskDialog(applicationId) {
-  const app = state.applications.find((item) => item.id === applicationId);
-  document.getElementById("taskApplicationId").value = applicationId;
-  document.getElementById("taskTitle").value = app ? `Follow up with ${app.companyName}` : "";
-  document.getElementById("taskDueAt").value = toDateInput(addDays(new Date(), 7));
-  document.getElementById("taskPriority").value = "Normal";
-  document.getElementById("taskType").value = "Follow-up";
-  document.getElementById("taskNotes").value = "";
-  document.getElementById("taskDialog").showModal();
-}
-
-function openTaskCompletionDialog(task) {
-  if (!task) return;
-  const app = state.applications.find((item) => item.id === task.applicationId);
-  document.getElementById("taskCompletionTaskId").value = task.id;
-  document.getElementById("taskCompletionType").value = defaultTaskCompletionType(task);
-  document.getElementById("taskCompletionDate").value = toDateInput(new Date());
-  document.getElementById("taskCompletionMethod").value = "email_sent";
-  document.getElementById("taskCompletionNotes").value = "";
-  document.getElementById("taskCompletionContext").textContent = app
-    ? `${task.title} - ${app.jobTitle} at ${app.companyName}`
-    : task.title;
-  document.getElementById("taskCompletionDialog").showModal();
-}
-
-async function handleTaskCompletionButton(button) {
-  const task = state.tasks.find((item) => item.id === button.dataset.completeTask);
-  if (!task) return;
-
-  const outcome = button.dataset.taskOutcome || "done";
-  if (outcome === "done") {
-    openTaskCompletionDialog(task);
-    return;
-  }
-
-  await completeNextAction(task, outcome);
-}
-
-async function saveTaskCompletion(event) {
-  event.preventDefault();
-  const task = state.tasks.find((item) => item.id === document.getElementById("taskCompletionTaskId").value);
-  if (!task) return;
-
-  await completeNextAction(task, "done", {
-    eventType: document.getElementById("taskCompletionType").value,
-    occurredAt: document.getElementById("taskCompletionDate").value,
-    method: document.getElementById("taskCompletionMethod").value,
-    notes: document.getElementById("taskCompletionNotes").value.trim(),
-  });
-  document.getElementById("taskCompletionDialog").close();
-}
-
-async function completeNextAction(task, outcome = "done", details = {}) {
-  if (!task) return;
-  if (outcome === "unavailable" && !confirm("Mark this follow-up as unavailable because there is no contact information?")) {
-    return;
-  }
-
-  const completedAt = new Date().toISOString();
-  const completedDate = details.occurredAt || toDateInput(new Date(completedAt));
-  const updatedTask = {
-    ...task,
-    completedAt,
-  };
-
-  const isUnavailable = outcome === "unavailable";
-  const eventType = isUnavailable ? "next_action_unavailable" : details.eventType || defaultTaskCompletionType(task);
-  const unavailableDescription = `No contact information available for: ${task.title}`;
-  const completionDescription = buildTaskCompletionDescription(task, details);
-  const activity = {
-    id: crypto.randomUUID(),
-    applicationId: task.applicationId,
-    type: eventType,
-    title: eventLabels[eventType] || eventLabels.next_action_completed,
-    description: isUnavailable ? unavailableDescription : completionDescription,
-    occurredAt: completedDate,
-    createdAt: completedAt,
-    source: "next_action",
-  };
-
-  await put("tasks", updatedTask);
-  await put("events", activity);
-
-  if (!isUnavailable) {
-    await loadAll();
-    await maybeGenerateReminder(activity);
-  }
-
-  await loadAll();
-  render();
-}
-
-function defaultTaskCompletionType(task) {
-  const text = `${task.title || ""} ${task.type || ""}`.toLowerCase();
-  if (text.includes("thank")) return "thank_you_sent";
-  if (text.includes("follow") || text.includes("reply") || text.includes("check")) return "follow_up_sent";
-  return "next_action_completed";
-}
-
-function buildTaskCompletionDescription(task, details = {}) {
-  const methodLabel = taskCompletionMethodLabels[details.method] || "";
-  const heading = methodLabel ? `${methodLabel} - ${task.title}` : task.title;
-  const notes = details.notes || "";
-  const originalNotes = task.notes ? `Next action note: ${task.notes}` : "";
-  return [heading, notes, originalNotes].filter(Boolean).join("\n\n");
-}
-
 function updateConditionalPathFields() {
   const path = document.getElementById("applicationPath").value;
   document.getElementById("applicationForm").dataset.applicationPath = path;
@@ -298,7 +172,6 @@ async function saveApplication(event) {
     jobTitle: document.getElementById("jobTitle").value.trim(),
     stage: document.getElementById("stage").value,
     applicationPath: document.getElementById("applicationPath").value,
-    source: existing?.source || "",
     referrerName: document.getElementById("referrerName").value.trim(),
     referrerContact: document.getElementById("referrerContact").value.trim(),
     headhunterName: document.getElementById("headhunterName").value.trim(),
@@ -316,8 +189,6 @@ async function saveApplication(event) {
     portfolioPath: document.getElementById("portfolioPath").value.trim(),
     tailoredDocuments: document.getElementById("tailoredDocuments").checked,
     documentNotes: document.getElementById("documentNotes").value.trim(),
-    excitement: existing?.excitement || "",
-    fit: existing?.fit || "",
     notes: document.getElementById("notes").value.trim(),
     createdAt: existing?.createdAt || toDateInput(new Date()),
     updatedAt: now,
@@ -348,7 +219,6 @@ async function saveApplication(event) {
       createdAt: now,
     };
     await put("events", submittedActivity);
-    await maybeGenerateReminder(submittedActivity, app);
   }
 
   document.getElementById("applicationDialog").close();
@@ -400,11 +270,6 @@ async function saveActivity(event) {
       now,
     }));
   }
-  if (!existing) {
-    await maybeGenerateReminder(activity);
-  }
-  await refreshApplicationStage(applicationId);
-
   document.getElementById("activityDialog").close();
   await loadAll();
   render();
@@ -418,7 +283,6 @@ async function deleteActivity(activity) {
     remove("events", activity.id),
     ...relatedReschedules.map((event) => remove("events", event.id)),
   ]);
-  await refreshApplicationStage(activity.applicationId);
   await loadAll();
   render();
 }
@@ -470,108 +334,6 @@ function createInterviewRescheduleActivity({ applicationId, interviewEventId, pr
   };
 }
 
-async function saveTask(event) {
-  event.preventDefault();
-  const now = new Date().toISOString();
-  await put("tasks", {
-    id: crypto.randomUUID(),
-    applicationId: document.getElementById("taskApplicationId").value,
-    title: document.getElementById("taskTitle").value.trim(),
-    dueAt: document.getElementById("taskDueAt").value,
-    priority: document.getElementById("taskPriority").value,
-    type: document.getElementById("taskType").value,
-    notes: document.getElementById("taskNotes").value.trim(),
-    completedAt: "",
-    source: "manual",
-    relatedEventId: "",
-    createdAt: now,
-  });
-
-  document.getElementById("taskDialog").close();
-  await loadAll();
-  render();
-}
-
-async function maybeGenerateReminder(activity, appOverride = null) {
-  const reminderMap = {
-    application_submitted: 7,
-    follow_up_sent: 7,
-    recruiter_replied: 5,
-    internal_contact_replied: 5,
-    interview_completed: 1,
-  };
-
-  const delay = reminderMap[activity.type];
-  if (!delay) return;
-
-  const app = appOverride || state.applications.find((item) => item.id === activity.applicationId);
-  if (!app || isClosed(applicationStage(app))) return;
-
-  const titleMap = {
-    application_submitted: `Follow up with ${app.companyName}`,
-    follow_up_sent: `Check for reply from ${app.companyName}`,
-    recruiter_replied: `Reply or prepare next step for ${app.companyName}`,
-    internal_contact_replied: `Reply or prepare next step for ${app.companyName}`,
-    interview_completed: `Send thank-you note to ${app.companyName}`,
-  };
-
-  if (hasOpenAutoReminder(activity.applicationId)) return;
-
-  await put("tasks", {
-    id: crypto.randomUUID(),
-    applicationId: activity.applicationId,
-    title: titleMap[activity.type],
-    dueAt: toDateInput(addDays(new Date(activity.occurredAt), delay)),
-    completedAt: "",
-    source: "auto",
-    relatedEventId: activity.id,
-    createdAt: new Date().toISOString(),
-  });
-}
-
-function hasOpenAutoReminder(applicationId) {
-  return state.tasks.some((task) => (
-    task.applicationId === applicationId &&
-    task.source === "auto" &&
-    !task.completedAt
-  ));
-}
-
-async function refreshApplicationStage(applicationId) {
-  const app = state.applications.find((item) => item.id === applicationId);
-  if (!app) return;
-
-  const nextStage = stageFromActivities(applicationId, app.stage);
-
-  if (!nextStage || nextStage === app.stage) return;
-
-  await put("applications", {
-    ...app,
-    stage: nextStage,
-    updatedAt: new Date().toISOString(),
-  });
-}
-
-function stageFromActivities(applicationId, currentStage) {
-  const events = visibleEvents(eventsFor(applicationId));
-  const terminalStage = latestTerminalEventStage(applicationId);
-  if (terminalStage) return terminalStage;
-
-  const normalizedCurrent = normalizeStage(currentStage);
-  if (!isClosed(normalizedCurrent)) return normalizedCurrent;
-
-  if (events.some((event) => event.type.includes("interview"))) return "Recruiter Screen";
-  if (events.some((event) => event.type === "application_submitted")) return "Applied";
-  return "Applied";
-}
-
 async function deleteApplication(applicationId) {
-  const relatedEvents = state.events.filter((event) => event.applicationId === applicationId);
-  const relatedTasks = state.tasks.filter((task) => task.applicationId === applicationId);
-
-  await Promise.all([
-    remove("applications", applicationId),
-    ...relatedEvents.map((event) => remove("events", event.id)),
-    ...relatedTasks.map((task) => remove("tasks", task.id)),
-  ]);
+  await remove("applications", applicationId);
 }

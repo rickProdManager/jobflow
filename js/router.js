@@ -1,6 +1,6 @@
 // URL and browser history synchronization.
 
-const views = ["dashboard", "applications", "reminders", "analytics", "flow-map", "guide", "settings"];
+const views = ["dashboard", "applications", "analytics", "flow-map", "guide", "settings"];
 
 function bindHistoryNavigation() {
   window.addEventListener("popstate", () => {

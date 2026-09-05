@@ -6,7 +6,6 @@ let flowMapResizeTimer = null;
 function renderAnalytics() {
   const apps = analyticsApplications();
   const events = analyticsEvents(apps);
-  const tasks = analyticsTasks(apps);
   const segmentCounts = countApplicationsBySegment(apps, state.analyticsSegment);
   const conversion = conversionMetrics(apps, events);
   const stale = apps.filter((app) => !isClosed(applicationStage(app)) && daysSince(lastActivityDate(app.id)) >= STALE_AFTER_DAYS).length;
@@ -15,8 +14,6 @@ function renderAnalytics() {
   const withCoverLetter = apps.filter((app) => app.coverLetterName || app.coverLetterPath).length;
   const missingDocs = apps.filter((app) => !hasAnyDocument(app)).length;
   const tailoredDocs = apps.filter((app) => app.tailoredDocuments).length;
-  const openTasks = tasks.filter((task) => !task.completedAt).length;
-  const overdueTasks = tasks.filter((task) => !task.completedAt && new Date(task.dueAt) < startOfToday()).length;
   const cadence = pipelineCadenceMetrics(apps);
   const salary = salaryAnalytics(apps);
 
@@ -66,8 +63,6 @@ function renderAnalytics() {
         <div class="stats-grid">
           ${statCard(apps.length, "Applications")}
           ${statCard(events.length, "Activities")}
-          ${statCard(openTasks, "Open next actions")}
-          ${statCard(overdueTasks, "Overdue next actions")}
         </div>
       </div>
       <div class="panel">
@@ -92,7 +87,7 @@ function renderAnalytics() {
         ${renderSalaryAnalytics(salary)}
       </div>
       <div class="panel">
-        <h3>Action cadence</h3>
+        <h3>Activity cadence</h3>
         ${renderCadenceMetrics(cadence)}
       </div>
       <div class="panel panel-wide">
@@ -427,20 +422,13 @@ function analyticsApplications() {
     ));
     if (hasEventInRange) return true;
 
-    return state.tasks.some((task) => (
-      task.applicationId === app.id && isWithinAnalyticsRange(task.dueAt)
-    ));
+    return false;
   });
 }
 
 function analyticsEvents(applications) {
   const appIds = new Set(applications.map((app) => app.id));
   return visibleEvents(state.events).filter((event) => appIds.has(event.applicationId) && isWithinAnalyticsRange(event.occurredAt));
-}
-
-function analyticsTasks(applications) {
-  const appIds = new Set(applications.map((app) => app.id));
-  return state.tasks.filter((task) => appIds.has(task.applicationId) && isWithinAnalyticsRange(task.dueAt));
 }
 
 function isWithinAnalyticsRange(dateString) {
@@ -574,16 +562,6 @@ function applicationTimelinePoints(app) {
       sortKey: `${dateOnly(event.occurredAt)}T01:00:00.000Z-${event.createdAt || ""}`,
     });
   });
-
-  tasksFor(app.id)
-    .filter((task) => task.completedAt)
-    .forEach((task) => {
-      points.push({
-        label: `Completed next action: ${task.title}`,
-        date: dateOnly(task.completedAt),
-        sortKey: `${dateOnly(task.completedAt)}T02:00:00.000Z-${task.completedAt}`,
-      });
-    });
 
   return points
     .filter((point) => point.date)

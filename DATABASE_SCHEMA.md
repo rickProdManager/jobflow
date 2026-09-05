@@ -20,7 +20,8 @@ The database is local to this project folder. The browser never opens SQLite dir
 
 The schema is intentionally hybrid:
 
-- `applications`, `events`, and `tasks` store the full browser record as JSON in a `data` column.
+- `applications` and `events` store the active browser records as JSON in a `data` column.
+- Legacy `tasks` rows may remain in older databases, but they are inert and are not exposed through the API, loaded into the app, analyzed, or exported.
 - Those same tables also keep a few duplicated metadata columns for sorting, filtering, joins, and indexes.
 - `uploaded_files` stores document metadata plus the file bytes as a SQLite `BLOB`.
 - `auth_users` and `auth_sessions` support the local unlock screen.
@@ -88,7 +89,7 @@ Those requests are handled by Python code in `server.py`; they do not map to fil
 
 ### Main Data Endpoints
 
-The three main app tables share the same API pattern.
+The two active app tables share the same API pattern.
 
 | Frontend helper | HTTP request | Server behavior |
 | --- | --- | --- |
@@ -98,9 +99,6 @@ The three main app tables share the same API pattern.
 | `getAll("events")` | `GET /api/events` | Return all activity JSON records |
 | `put("events", event)` | `PUT /api/events` | Insert or update one activity |
 | `remove("events", id)` | `DELETE /api/events/{id}` | Delete one activity |
-| `getAll("tasks")` | `GET /api/tasks` | Return all next-action JSON records |
-| `put("tasks", task)` | `PUT /api/tasks` | Insert or update one next action |
-| `remove("tasks", id)` | `DELETE /api/tasks/{id}` | Delete one next action |
 
 For `PUT` requests, the browser sends the full record as JSON. The server validates that it has an `id`, stores the complete JSON in the `data` column, and copies selected fields into metadata columns.
 
@@ -130,14 +128,14 @@ updated_at -> value from updatedAt
 
 ### Import/Export Endpoint
 
-Export is assembled entirely in the browser from already-loaded state:
+The full backup export is assembled entirely in the browser from already-loaded state:
 
 ```js
 {
+  schemaVersion,
   exportedAt,
   applications,
-  events,
-  tasks
+  events
 }
 ```
 
@@ -147,7 +145,9 @@ Import uses:
 POST /api/import
 ```
 
-The server validates that the payload contains `applications`, `events`, and `tasks` arrays. It then replaces all rows in those three tables. It does not replace uploaded files or local authentication settings.
+The server validates that the payload contains `applications` and `events` arrays. It then replaces those active records, normalizes obsolete application fields away, and reconciles each stored stage from terminal events. Older backups may contain a `tasks` array; it is accepted and ignored. Uploaded files and local authentication settings are not replaced.
+
+The browser also offers a non-importable sanitized brief. It is Markdown generated only from an explicit allowlist of aggregate data and compact interview routes. It excludes contact information, free text, documents, URLs, paths, IDs, exact times, task data, salary, and obsolete application fields. A secondary privacy guard cancels the export if obvious contact, URL, local-path, or telephone patterns appear.
 
 ### File Upload Endpoint
 
@@ -329,9 +329,9 @@ CREATE INDEX idx_events_application_id ON events(application_id);
 CREATE INDEX idx_events_occurred_at ON events(occurred_at);
 ```
 
-### `tasks`
+### Legacy `tasks`
 
-Stores open and completed next actions.
+Older databases can retain the previous task table without a destructive migration. It is no longer part of the active data model: there are no task endpoints, client state, analytics, backup output, or import restoration. The table is documented only to explain backward compatibility.
 
 ```sql
 CREATE TABLE tasks (
@@ -353,30 +353,6 @@ Columns:
 - `due_at`: copied from `data.dueAt`.
 - `completed_at`: copied from `data.completedAt`.
 - `created_at`: copied from `data.createdAt`.
-
-Common JSON fields inside `data` include:
-
-- `applicationId`
-- `title`
-- `dueAt`
-- `priority`
-- `type`
-- `notes`
-- `completedAt`
-- `source`
-- `relatedEventId`
-- `createdAt`
-
-Relationship:
-
-- When an application is deleted, its tasks are deleted automatically through `ON DELETE CASCADE`.
-
-Indexes:
-
-```sql
-CREATE INDEX idx_tasks_application_id ON tasks(application_id);
-CREATE INDEX idx_tasks_due_at ON tasks(due_at);
-```
 
 ### `uploaded_files`
 
@@ -503,8 +479,7 @@ CREATE INDEX idx_auth_sessions_expires_at ON auth_sessions(expires_at);
 
 ```text
 applications
-  ├── events.application_id -> applications.id
-  └── tasks.application_id  -> applications.id
+  └── events.application_id -> applications.id
 
 uploaded_files
   └── linked indirectly by file paths stored in applications.data
@@ -516,7 +491,7 @@ auth_sessions
   └── active unlock sessions
 ```
 
-Deleting an application cascades to `events` and `tasks`. Uploaded files are not currently cascaded by a database foreign key because application records store document paths inside JSON.
+Deleting an application cascades to `events` (and any legacy task rows retained by the database). Uploaded files are not currently cascaded by a database foreign key because application records store document paths inside JSON.
 
 ## Import And Export
 
@@ -524,14 +499,14 @@ The Data tab exports this JSON shape:
 
 ```json
 {
+  "schemaVersion": 2,
   "exportedAt": "2026-06-16T00:00:00.000Z",
   "applications": [],
-  "events": [],
-  "tasks": []
+  "events": []
 }
 ```
 
-Only `applications`, `events`, and `tasks` are included in JSON import/export.
+Only `applications` and `events` are included in new JSON backup exports.
 
 Not included:
 
@@ -539,7 +514,7 @@ Not included:
 - `auth_users`
 - `auth_sessions`
 
-Import replaces all rows in `applications`, `events`, and `tasks`. It does not replace local authentication settings.
+Import replaces the active `applications` and `events` records. It accepts old `tasks`, `fit`, `excitement`, and application `source` values but ignores them. It does not replace local authentication settings.
 
 ## Security Notes
 
@@ -577,13 +552,4 @@ SELECT application_id, occurred_at
 FROM events
 ORDER BY occurred_at DESC
 LIMIT 20;
-```
-
-Show open next actions:
-
-```sql
-SELECT application_id, due_at, json_extract(data, '$.title') AS title
-FROM tasks
-WHERE completed_at = ''
-ORDER BY due_at ASC;
 ```

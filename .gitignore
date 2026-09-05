@@ -9,6 +9,11 @@ data/
 *.db-shm
 *.backup*
 
+# Generated exports can contain private job-search data. These patterns have
+# no directory prefix, so they apply anywhere inside the public checkout.
+jobflow-private-backup-*.json
+jobflow-sanitized-brief-*.md
+
 # Local environment and secrets
 .env
 .env.*
@@ -23,4 +28,3 @@ __pycache__/
 .LSOverride
 *.swp
 *.swo
-

@@ -32,8 +32,22 @@ DOCUMENTS_DIR = DATA_DIR / "documents"
 PRIVATE_DIR_MODE = 0o700
 PRIVATE_FILE_MODE = 0o600
 
-# JSON-backed application data tables exposed through the generic CRUD API.
-TABLES = ("applications", "events", "tasks")
+# JSON-backed records exposed through the generic CRUD API.  The legacy
+# `tasks` table remains in existing databases, but it is deliberately inert:
+# it is not exposed, loaded, imported, or exported.
+TABLES = ("applications", "events")
+BACKUP_SCHEMA_VERSION = 2
+
+TERMINAL_STAGE_BY_EVENT = {
+    "offer_received": "Offer",
+    "offer_accepted": "Accepted",
+    "rejected": "Rejected",
+    "abandoned_no_response": "Abandoned",
+}
+TERMINAL_EVENT_BY_STAGE = {stage: event_type for event_type, stage in TERMINAL_STAGE_BY_EVENT.items()}
+VALID_APPLICATION_PATHS = {"direct", "referral", "headhunter"}
+OBSOLETE_APPLICATION_FIELDS = {"fit", "excitement", "source"}
+STAGE_FALLBACK_FIELD = "_stageBeforeTerminal"
 
 # Canonical labels returned by the API for event records. This keeps older
 # saved records from leaking internal event codes into the UI.
@@ -165,20 +179,8 @@ def init_db():
               FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
             );
 
-            CREATE TABLE IF NOT EXISTS tasks (
-              id TEXT PRIMARY KEY,
-              application_id TEXT,
-              data TEXT NOT NULL,
-              due_at TEXT,
-              completed_at TEXT,
-              created_at TEXT,
-              FOREIGN KEY (application_id) REFERENCES applications(id) ON DELETE CASCADE
-            );
-
             CREATE INDEX IF NOT EXISTS idx_events_application_id ON events(application_id);
             CREATE INDEX IF NOT EXISTS idx_events_occurred_at ON events(occurred_at);
-            CREATE INDEX IF NOT EXISTS idx_tasks_application_id ON tasks(application_id);
-            CREATE INDEX IF NOT EXISTS idx_tasks_due_at ON tasks(due_at);
 
             CREATE TABLE IF NOT EXISTS uploaded_files (
               id TEXT PRIMARY KEY,
@@ -229,6 +231,7 @@ def init_db():
         # auth_users row, so add them explicitly when absent.
         ensure_column(db, "auth_users", "kdf_params", "TEXT NOT NULL DEFAULT '{}'")
         ensure_column(db, "auth_users", "totp_secret", "TEXT NOT NULL DEFAULT ''")
+        reconcile_application_stages(db)
     harden_private_storage_permissions()
 
 
@@ -331,13 +334,134 @@ def validate_record(record):
     return isinstance(record, dict) and isinstance(record.get("id"), str) and record["id"].strip()
 
 
+def normalize_stage(stage):
+    if not stage or stage in ("Saved", "Preparing"):
+        return "Applied"
+    return stage
+
+
+def normalized_application_path(record):
+    path = record.get("applicationPath")
+    if path in VALID_APPLICATION_PATHS:
+        return path
+    if record.get("referrerName"):
+        return "referral"
+    if record.get("headhunterName"):
+        return "headhunter"
+    return "direct"
+
+
+def normalize_application_record(record):
+    cleaned = {key: value for key, value in record.items() if key not in OBSOLETE_APPLICATION_FIELDS}
+    cleaned["applicationPath"] = normalized_application_path(cleaned)
+    cleaned["stage"] = normalize_stage(cleaned.get("stage"))
+    return cleaned
+
+
 def normalize_record(table, record):
-    if table != "events" or not isinstance(record, dict):
+    if not isinstance(record, dict):
+        return record
+    if table == "applications":
+        return normalize_application_record(record)
+    if table != "events":
         return record
     label = EVENT_LABELS.get(record.get("type"))
-    if not label:
-        return record
-    return {**record, "title": label}
+    return {**record, "title": label} if label else record
+
+
+def date_sort_key(event):
+    return (str(event.get("occurredAt") or ""), str(event.get("createdAt") or ""))
+
+
+def terminal_stage_from_events(events):
+    terminal_events = [event for event in events if TERMINAL_STAGE_BY_EVENT.get(event.get("type"))]
+    if not terminal_events:
+        return ""
+    latest = max(terminal_events, key=date_sort_key)
+    return TERMINAL_STAGE_BY_EVENT[latest["type"]]
+
+
+def events_for_application(db, application_id):
+    rows = db.execute("SELECT data FROM events WHERE application_id = ?", (application_id,)).fetchall()
+    return [json.loads(row["data"]) for row in rows]
+
+
+def write_application(db, record):
+    normalized = normalize_application_record(record)
+    meta = metadata("applications", normalized)
+    db.execute(
+        """
+        INSERT INTO applications (id, data, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          data = excluded.data,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at
+        """,
+        (normalized["id"], json.dumps(normalized), meta["created_at"], meta["updated_at"]),
+    )
+    return normalized
+
+
+def synchronize_application_stage(db, application_id):
+    row = db.execute("SELECT data FROM applications WHERE id = ?", (application_id,)).fetchone()
+    if not row:
+        return None
+    application = normalize_application_record(json.loads(row["data"]))
+    terminal_stage = terminal_stage_from_events(events_for_application(db, application_id))
+    if terminal_stage:
+        if STAGE_FALLBACK_FIELD not in application:
+            fallback = normalize_stage(application.get("stage"))
+            application[STAGE_FALLBACK_FIELD] = "Applied" if fallback in TERMINAL_EVENT_BY_STAGE else fallback
+        application["stage"] = terminal_stage
+    elif STAGE_FALLBACK_FIELD in application:
+        application["stage"] = normalize_stage(application.pop(STAGE_FALLBACK_FIELD))
+    else:
+        application["stage"] = normalize_stage(application.get("stage"))
+    write_application(db, application)
+    return application
+
+
+def add_terminal_event_for_manual_stage(db, application):
+    event_type = TERMINAL_EVENT_BY_STAGE.get(application.get("stage"))
+    if not event_type:
+        return
+    existing_stage = terminal_stage_from_events(events_for_application(db, application["id"]))
+    if existing_stage == application["stage"]:
+        return
+    timestamp = iso_utc(now_utc())
+    event = {
+        "id": str(uuid.uuid4()),
+        "applicationId": application["id"],
+        "type": event_type,
+        "title": event_type.replace("_", " ").title(),
+        "description": "",
+        "occurredAt": timestamp[:10],
+        "createdAt": timestamp,
+        "source": "manual_stage",
+    }
+    meta = metadata("events", event)
+    db.execute(
+        "INSERT INTO events (id, application_id, data, occurred_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        (event["id"], meta["application_id"], json.dumps(event), meta["occurred_at"], meta["created_at"]),
+    )
+
+
+def reconcile_application_stages(db):
+    rows = db.execute("SELECT data FROM applications").fetchall()
+    for row in rows:
+        application = normalize_application_record(json.loads(row["data"]))
+        terminal_stage = terminal_stage_from_events(events_for_application(db, application["id"]))
+        if terminal_stage:
+            if STAGE_FALLBACK_FIELD not in application:
+                fallback = normalize_stage(application.get("stage"))
+                application[STAGE_FALLBACK_FIELD] = "Applied" if fallback in TERMINAL_EVENT_BY_STAGE else fallback
+            application["stage"] = terminal_stage
+        elif STAGE_FALLBACK_FIELD in application:
+            application["stage"] = normalize_stage(application.pop(STAGE_FALLBACK_FIELD))
+        else:
+            application["stage"] = normalize_stage(application.get("stage"))
+        write_application(db, application)
 
 
 def read_json_or_error(handler):
@@ -921,17 +1045,15 @@ class Handler(SimpleHTTPRequestHandler):
         meta = metadata(table, record)
         with connect() as db:
             if table == "applications":
-                db.execute(
-                    """
-                    INSERT INTO applications (id, data, created_at, updated_at)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                      data = excluded.data,
-                      created_at = excluded.created_at,
-                      updated_at = excluded.updated_at
-                    """,
-                    (record["id"], json.dumps(record), meta["created_at"], meta["updated_at"]),
-                )
+                current_terminal_stage = terminal_stage_from_events(events_for_application(db, record["id"]))
+                if record.get("stage") in TERMINAL_EVENT_BY_STAGE and current_terminal_stage != record["stage"]:
+                    existing_row = db.execute("SELECT data FROM applications WHERE id = ?", (record["id"],)).fetchone()
+                    existing = normalize_application_record(json.loads(existing_row["data"])) if existing_row else {}
+                    fallback = existing.get(STAGE_FALLBACK_FIELD) or normalize_stage(existing.get("stage"))
+                    record[STAGE_FALLBACK_FIELD] = "Applied" if fallback in TERMINAL_EVENT_BY_STAGE else fallback
+                record = write_application(db, record)
+                add_terminal_event_for_manual_stage(db, record)
+                record = synchronize_application_stage(db, record["id"])
             elif table == "events":
                 db.execute(
                     """
@@ -951,27 +1073,7 @@ class Handler(SimpleHTTPRequestHandler):
                         meta["created_at"],
                     ),
                 )
-            else:
-                db.execute(
-                    """
-                    INSERT INTO tasks (id, application_id, data, due_at, completed_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(id) DO UPDATE SET
-                      application_id = excluded.application_id,
-                      data = excluded.data,
-                      due_at = excluded.due_at,
-                      completed_at = excluded.completed_at,
-                      created_at = excluded.created_at
-                    """,
-                    (
-                        record["id"],
-                        meta["application_id"],
-                        json.dumps(record),
-                        meta["due_at"],
-                        meta["completed_at"],
-                        meta["created_at"],
-                    ),
-                )
+                synchronize_application_stage(db, record["applicationId"])
             audit(db, "data.write", f"{table}/{record['id']}")
 
         json_response(self, 200, record)
@@ -992,7 +1094,13 @@ class Handler(SimpleHTTPRequestHandler):
             return json_response(self, 404, {"error": "Unknown API path"})
 
         with connect() as db:
+            application_id = None
+            if table == "events":
+                row = db.execute("SELECT application_id FROM events WHERE id = ?", (record_id,)).fetchone()
+                application_id = row["application_id"] if row else None
             db.execute(f"DELETE FROM {table} WHERE id = ?", (record_id,))
+            if application_id:
+                synchronize_application_stage(db, application_id)
             audit(db, "data.delete", f"{table}/{record_id}")
         json_response(self, 200, {"ok": True})
 
@@ -1073,6 +1181,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if not isinstance(payload, dict):
             return json_response(self, 400, {"error": "Import payload is invalid"})
+        if payload.get("format") == "jobflow-sanitized-brief":
+            return json_response(self, 400, {"error": "Sanitized briefs are read-only and cannot restore the tracker"})
         if not all(isinstance(payload.get(table), list) for table in TABLES):
             return json_response(self, 400, {"error": "Import payload is invalid"})
         for table in TABLES:
@@ -1080,35 +1190,26 @@ class Handler(SimpleHTTPRequestHandler):
                 return json_response(self, 400, {"error": "Import records require ids"})
 
         with connect() as db:
-            for table in TABLES:
+            for table in ("events", "applications"):
                 db.execute(f"DELETE FROM {table}")
             for application in payload["applications"]:
+                application = normalize_application_record(application)
                 meta = metadata("applications", application)
                 db.execute(
                     "INSERT INTO applications (id, data, created_at, updated_at) VALUES (?, ?, ?, ?)",
                     (application["id"], json.dumps(application), meta["created_at"], meta["updated_at"]),
                 )
             for event in payload["events"]:
+                event = normalize_record("events", event)
                 meta = metadata("events", event)
                 db.execute(
                     "INSERT INTO events (id, application_id, data, occurred_at, created_at) VALUES (?, ?, ?, ?, ?)",
                     (event["id"], meta["application_id"], json.dumps(event), meta["occurred_at"], meta["created_at"]),
                 )
-            for task in payload["tasks"]:
-                meta = metadata("tasks", task)
-                db.execute(
-                    "INSERT INTO tasks (id, application_id, data, due_at, completed_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        task["id"],
-                        meta["application_id"],
-                        json.dumps(task),
-                        meta["due_at"],
-                        meta["completed_at"],
-                        meta["created_at"],
-                    ),
-                )
+            reconcile_application_stages(db)
             counts = "/".join(f"{table}:{len(payload[table])}" for table in TABLES)
-            audit(db, "data.import", f"replaced all tables ({counts})")
+            ignored_tasks = len(payload.get("tasks", [])) if isinstance(payload.get("tasks", []), list) else 0
+            audit(db, "data.import", f"replaced records ({counts}); ignored legacy tasks:{ignored_tasks}")
 
         json_response(self, 200, {"ok": True})
 
