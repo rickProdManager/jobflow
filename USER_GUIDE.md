@@ -49,9 +49,9 @@ For a new interview, add an **Interview scheduled** activity and complete both d
 - **Scheduled on**: the date you learned about the interview.
 - **Interview takes place on**: the planned interview date.
 
-When the interview is finished, add a separate **Interview completed** activity.
+After the planned interview date has passed, Job Flow marks the scheduled interview **Completed automatically** on the following local calendar day. You do not need to add a second activity.
 
-If the date changes, edit the original **Interview scheduled** activity and change **Interview takes place on**. Job Flow shows a reschedule confirmation and retains a read-only history entry with the old and new dates. That correction remains one interview round in the Flow map.
+If the date changes, use **Reschedule / edit** on the original **Interview scheduled** activity and change **Interview takes place on**. Job Flow shows a reschedule confirmation and retains a read-only history entry with the old and new dates. Use **Cancel interview** before the planned date if it will not take place. Once the interview is complete, choose **Edit notes**; its activity type and dates are locked. Neither action creates a second interview round in the Flow map.
 
 There is no limit on interview rounds. Add one **Interview scheduled** activity for each new round; the map labels them Interview 1, Interview 2, Interview 3, and so on.
 
@@ -82,7 +82,7 @@ Before sharing a map publicly, choose **Company aliases**. This replaces company
 
 - **Outcomes** count applications, not every event.
 - **Interview scheduled** means at least one interview was arranged.
-- **Interviewed** means an interview was completed or the application moved to a later interview or offer stage.
+- **Interviewed** means the planned interview date has passed, a manual completion was recorded, or the application moved to a later interview or offer stage. Cancelled interviews do not count as completed.
 - **Age metrics** show how long active applications have been open and quiet.
 - **Activity cadence** measures time between recorded activities.
 - **Application timelines** show one readable route per application, using the planned date under scheduled interview points.

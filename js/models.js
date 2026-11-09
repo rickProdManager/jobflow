@@ -135,8 +135,22 @@ function eventsFor(applicationId) {
   return state.events.filter((event) => event.applicationId === applicationId);
 }
 
+function activityTimelineSortKey(event) {
+  const date = event.type === "interview_scheduled"
+    ? dateOnly(event.scheduledFor) || dateOnly(event.occurredAt)
+    : dateOnly(event.occurredAt);
+  return `${date}-${event.createdAt || ""}-${event.id || ""}`;
+}
+
+function isCompletedScheduledInterview(event, events = state.events, today = localDateInput()) {
+  return event?.type === "interview_scheduled" && interviewCompletionStatus(event, events, today) === "completed";
+}
+
 function eventDisplayLabel(event) {
   if (!event) return "";
+  if (isCompletedScheduledInterview(event)) {
+    return "Interview completed";
+  }
   return eventLabels[event.type] || normalizeActivityLabel(event.title) || normalizeActivityLabel(event.type);
 }
 
@@ -176,6 +190,30 @@ function applicationStage(app) {
 function normalizeStage(stage) {
   if (!stage || stage === "Saved" || stage === "Preparing") return "Applied";
   return stage;
+}
+
+function interviewCancellationEvent(scheduledInterview, events = state.events) {
+  if (!scheduledInterview?.id) return null;
+  return events
+    .filter((event) => event.type === "interview_cancelled" && event.scheduledEventId === scheduledInterview.id)
+    .sort((left, right) => `${left.occurredAt}-${left.createdAt || ""}`.localeCompare(`${right.occurredAt}-${right.createdAt || ""}`))
+    .at(-1) || null;
+}
+
+function interviewCompletionStatus(scheduledInterview, events = state.events, today = localDateInput()) {
+  if (scheduledInterview?.type !== "interview_scheduled") return "";
+  const scheduledFor = dateOnly(scheduledInterview.scheduledFor);
+  if (!scheduledFor) return "date_missing";
+  if (interviewCancellationEvent(scheduledInterview, events)) return "cancelled";
+  return scheduledFor < today ? "completed" : "scheduled";
+}
+
+function interviewStatusSuffix(scheduledInterview, events = state.events, today = localDateInput()) {
+  const status = interviewCompletionStatus(scheduledInterview, events, today);
+  if (status === "completed") return " · Completed automatically";
+  if (status === "cancelled") return " · Cancelled";
+  if (status === "date_missing") return " · Needs interview date";
+  return "";
 }
 
 function latestTerminalEventStage(applicationId) {

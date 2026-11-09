@@ -356,8 +356,8 @@ function renderGuide() {
       <section class="panel guide-card">
         <p class="guide-number">3</p>
         <h3>Record interviews correctly</h3>
-        <p>Choose <strong>Interview scheduled</strong>, then fill in both <strong>Scheduled on</strong> (when you learned about it) and <strong>Interview takes place on</strong> (the actual planned date). Add a separate <strong>Interview completed</strong> activity once it happens.</p>
-        <p>If an interview moves, edit the scheduled activity and change only <strong>Interview takes place on</strong>. The dialog changes to <strong>Reschedule interview</strong>, explains the move before saving, and adds a history entry with the old and new dates. It does not create a second interview round in the Flow map.</p>
+        <p>Choose <strong>Interview scheduled</strong>, then fill in both <strong>Scheduled on</strong> (when you learned about it) and <strong>Interview takes place on</strong> (the actual planned date). It becomes <strong>Completed automatically</strong> on the following local calendar day, so no second activity is needed.</p>
+        <p>If an interview moves, choose <strong>Reschedule / edit</strong> and change only <strong>Interview takes place on</strong>. The dialog changes to <strong>Reschedule interview</strong>, explains the move before saving, and adds a history entry with the old and new dates. Use <strong>Cancel interview</strong> before the planned date if it will not take place. Once an interview is complete, choose <strong>Edit notes</strong>; its activity type and dates are locked. Neither action creates a second interview round in the Flow map.</p>
       </section>
 
       <section class="panel guide-card">
@@ -412,8 +412,8 @@ function renderGuide() {
               <tr><th>Follow-up sent</th><td>You send a check-in after applying or after a conversation.</td><td>Records the outreach in the timeline.</td></tr>
               <tr><th>Recruiter replied</th><td>A recruiter responds.</td><td>Records the response in the timeline.</td></tr>
               <tr><th>Internal Contact Replied</th><td>A referrer, hiring contact, or employee responds.</td><td>Records the response in the timeline.</td></tr>
-              <tr><th>Interview scheduled</th><td>An interview has been arranged.</td><td>Adds the next numbered interview to the Flow map using its planned date.</td></tr>
-              <tr><th>Interview completed</th><td>The interview has taken place.</td><td>Records the completed conversation.</td></tr>
+              <tr><th>Interview scheduled</th><td>An interview has been arranged.</td><td>Adds the next numbered interview to the Flow map using its planned date and becomes completed automatically after that date.</td></tr>
+              <tr><th>Interview completed</th><td>You need to record a historical completion manually.</td><td>Retains a manually entered completion for older records.</td></tr>
               <tr><th>Thank-you sent</th><td>You send a thank-you note.</td><td>Keeps that outreach in the timeline.</td></tr>
               <tr><th>Offer received / accepted</th><td>You receive an offer or decide to accept it.</td><td>Marks the process as Offer or Accepted.</td></tr>
               <tr><th>Rejected / Abandoned</th><td>The employer declines, or the process has genuinely gone cold.</td><td>Closes the application and updates the Flow-map outcome.</td></tr>
@@ -436,7 +436,7 @@ function renderGuide() {
         <summary>How to read Analytics and application timelines</summary>
         <div class="guide-detail-copy">
           <p>Choose a segment to group applications by Stage, application path, work mode, or document tailoring. The date range includes an application when its creation or an activity falls inside the range.</p>
-          <p>Outcome totals count applications, not every event. <strong>Interview scheduled</strong> means an interview was arranged; <strong>Interviewed</strong> means it was completed or the process is at a later stage.</p>
+          <p>Outcome totals count applications, not every event. <strong>Interview scheduled</strong> means an interview was arranged; <strong>Interviewed</strong> means its planned date has passed, it was completed manually, or the process is at a later stage. Cancelled interviews do not count as completed.</p>
           <p>Application timelines are per-application routes. Scheduled interviews use the planned interview date. Completed interviews remain in the written activity timeline so the route stays readable.</p>
         </div>
       </details>
@@ -462,7 +462,8 @@ function renderGuide() {
 }
 
 function renderApplicationCard(app) {
-  const appEvents = visibleEvents(eventsFor(app.id));
+  const appEvents = visibleEvents(eventsFor(app.id))
+    .sort((left, right) => activityTimelineSortKey(right).localeCompare(activityTimelineSortKey(left)));
   const lastDate = lastActivityDate(app.id);
   const applied = firstEventDate(app.id, "application_submitted");
   const ageText = applied ? `${daysSince(applied)} days since applied` : `${daysSince(app.createdAt)} days since saved`;
@@ -539,9 +540,13 @@ function renderTimeline(events, options = {}) {
   return events.map((event) => {
     const app = state.applications.find((item) => item.id === event.applicationId);
     const label = eventDisplayLabel(event);
-    const dateText = timelineDateText(event);
+    const dateText = `${timelineDateText(event)}${interviewStatusSuffix(event)}`;
     const isLinked = app && !options.editable;
-    const canEdit = options.editable && event.type !== "interview_rescheduled";
+    const isCompletedInterview = isCompletedScheduledInterview(event);
+    const canEdit = options.editable && !["interview_rescheduled", "interview_cancelled"].includes(event.type);
+    const canCancel = options.editable && event.type === "interview_scheduled" && interviewCompletionStatus(event) === "scheduled";
+    const canDelete = options.editable && event.type !== "interview_rescheduled" && !isCompletedInterview;
+    const editLabel = isCompletedInterview ? "Edit notes" : (event.type === "interview_scheduled" ? "Reschedule / edit" : "Edit");
     const heading = isLinked ? `${app.jobTitle}` : label;
     return `
       <div class="timeline-item ${isLinked ? "timeline-link" : ""}" ${isLinked ? `data-application-link="${app.id}"` : ""}>
@@ -555,10 +560,11 @@ function renderTimeline(events, options = {}) {
               </div>
             ` : `<p class="timeline-date">${escapeHtml(dateText)}</p>`}
           </div>
-          ${canEdit ? `
+          ${canEdit || canCancel || canDelete ? `
             <div class="timeline-item-actions">
-              <button class="mini-button" data-edit-activity="${event.id}">Edit</button>
-              <button class="mini-button danger-button" data-delete-activity="${event.id}">Delete</button>
+              ${canEdit ? `<button class="mini-button" data-edit-activity="${event.id}">${editLabel}</button>` : ""}
+              ${canCancel ? `<button class="mini-button danger-button" data-cancel-interview="${event.id}">Cancel interview</button>` : ""}
+              ${canDelete ? `<button class="mini-button danger-button" data-delete-activity="${event.id}">Delete</button>` : ""}
             </div>
           ` : ""}
         </div>
@@ -571,6 +577,9 @@ function renderTimeline(events, options = {}) {
 function timelineDateText(event) {
   if (event.type === "interview_scheduled" && event.scheduledFor) {
     return `Scheduled ${formatDate(event.occurredAt)} · Interview ${formatDate(event.scheduledFor)}`;
+  }
+  if (event.type === "interview_cancelled" && event.scheduledFor) {
+    return `Cancelled ${formatDate(event.occurredAt)} · Was scheduled ${formatDate(event.scheduledFor)}`;
   }
   return formatDate(event.occurredAt);
 }

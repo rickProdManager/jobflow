@@ -194,8 +194,12 @@ function applicationEvents(events, applicationId) {
 }
 
 function interviewEventsForBrief(events, applicationId) {
-  return applicationEvents(events, applicationId)
-    .filter((event) => event.type === "interview_scheduled");
+  const eventsForApplication = applicationEvents(events, applicationId);
+  return eventsForApplication
+    .filter((event) => event.type === "interview_scheduled")
+    .filter((scheduledEvent) => !eventsForApplication.some((event) => (
+      event.type === "interview_cancelled" && event.scheduledEventId === scheduledEvent.id
+    )));
 }
 
 function briefStage(app, events) {

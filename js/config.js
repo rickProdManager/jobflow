@@ -53,6 +53,7 @@ const eventLabels = {
   internal_contact_replied: "Internal Contact Replied",
   interview_scheduled: "Interview scheduled",
   interview_completed: "Interview completed",
+  interview_cancelled: "Interview cancelled",
   thank_you_sent: "Thank-you sent",
   offer_received: "Offer received",
   offer_accepted: "Offer accepted",

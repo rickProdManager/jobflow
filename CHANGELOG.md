@@ -6,6 +6,12 @@ This project tracks changes by date because the public `main` branch is the acti
 
 Version labels are human-readable project milestones. GitHub releases or tags are optional.
 
+## 2026-11-09
+
+### Changed
+
+- Mark scheduled interviews completed automatically on the following local calendar day without creating a duplicate activity. Interviews may be rescheduled or cancelled before their planned date; once complete, their activity type and dates are locked while notes remain editable. Linked cancellations are excluded from completion counts and the Flow map.
+
 ## 2026-09-05
 
 ### Changed

@@ -476,7 +476,10 @@ function analyticsChartTitle() {
 function conversionMetrics(applications, events) {
   const appIdsWithSubmittedEvents = new Set(events.filter((event) => event.type === "application_submitted").map((event) => event.applicationId));
   const appIdsWithScheduledInterviewEvents = new Set(events.filter((event) => event.type === "interview_scheduled").map((event) => event.applicationId));
-  const appIdsWithCompletedInterviewEvents = new Set(events.filter((event) => event.type === "interview_completed").map((event) => event.applicationId));
+  const appIdsWithCompletedInterviewEvents = new Set([
+    ...events.filter((event) => event.type === "interview_completed"),
+    ...events.filter((event) => event.type === "interview_scheduled" && interviewCompletionStatus(event) === "completed"),
+  ].map((event) => event.applicationId));
   const appIdsWithOfferEvents = new Set(events.filter((event) => event.type === "offer_received").map((event) => event.applicationId));
   const appIdsWithAcceptedOfferEvents = new Set(events.filter((event) => event.type === "offer_accepted").map((event) => event.applicationId));
   const appIdsWithRejectedEvents = new Set(events.filter((event) => event.type === "rejected").map((event) => event.applicationId));
@@ -798,7 +801,7 @@ function applicationFlowRoute(app, options = {}) {
   const stage = applicationStage(app);
   const outcome = latestFlowOutcome(app, eventTypes, stage);
   const interviews = events
-    .filter((event) => event.type === "interview_scheduled")
+    .filter((event) => event.type === "interview_scheduled" && interviewCompletionStatus(event, events) !== "cancelled")
     .sort((a, b) => `${a.scheduledFor || a.occurredAt}-${a.createdAt || ""}-${a.id || ""}`.localeCompare(`${b.scheduledFor || b.occurredAt}-${b.createdAt || ""}-${b.id || ""}`));
   const isDirectExit = Boolean(outcome) && !interviews.length;
 
