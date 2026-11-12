@@ -500,7 +500,7 @@ function renderApplicationCard(app) {
           ${app.notes ? `<p>${escapeHtml(app.notes)}</p>` : ""}
           ${documentSummary}
           <div class="timeline-list activity-section">
-            ${appEvents.length ? renderTimeline(appEvents.slice(0, 5), { editable: true }) : `<p class="empty">No dated activity yet.</p>`}
+            ${appEvents.length ? renderTimeline(appEvents, { editable: true }) : `<p class="empty">No dated activity yet.</p>`}
           </div>
         </div>
       </details>
